@@ -1,6 +1,6 @@
 # Suisse Line assistant configuration
 
-What will be entered into the Suisse Line dashboard after activation. No account exists yet, so how the dashboard names these fields, and whether it supports them, is unknown.
+What will be entered into the Suisse Line dashboard. The Add tool form's field names are now known, see [The Add tool form](#the-add-tool-form). What the platform actually sends to a tool is still unknown.
 
 The fields, types and failure codes below come from section 6 of `docs/PLAN.md` and `app/routers/assistant.py`.
 
@@ -39,7 +39,26 @@ If you are unsure, ask again. If you cannot help, offer to take a message.
 Hello, thanks for calling the barbershop. How can I help you today?
 ```
 
+## The Add tool form
+
+The form has no header or key field, so tools authenticate with variant (b), [a token in the URL path](#b-long-random-token-in-the-url-path).
+
+| Dashboard field | What to enter |
+| --- | --- |
+| Tool Name | The `name` from the definition below |
+| HTTP Method | `POST` |
+| When to Use (AI Instruction) | The `description` from the definition below |
+| Webhook URL | `https://YOUR-TUNNEL-ADDRESS/assistant/t/YOUR-PATH-TOKEN/` followed by the part of `path` after `/assistant/`, for example `.../assistant/t/YOUR-PATH-TOKEN/bookings/find` |
+| Parameters | The `parameters` from the definition below |
+| Preload before agent starts speaking | Behaviour unverified. Decide after the first test call |
+| Don't wait for result | Behaviour unverified. Leave it off, because the assistant must speak each tool's result. Judgement, not tested |
+| Customize webhook payload fields | Behaviour unverified. Leave the default until the capture has been read |
+
+**The request envelope is still unknown.** A note on the form says each webhook carries an envelope with the transcript, phone numbers, the agent prompt and the extracted parameters. Its exact shape is unknown until a real request has been captured, see [Capture mode](#capture-mode-rehearsal-only). The tool routes still expect a flat JSON body containing only each tool's fields, so a real call may be answered with `invalid_input` until that is resolved. No adapter has been designed or built, because that needs the capture.
+
 ## Tool definitions
+
+The `headers` and `path` values below belong to variant (a) and cannot be entered in the form. They stay here as the reference for each tool's name, description and parameters.
 
 Every tool uses method `POST` and a flat JSON body. Replace `https://YOUR-TUNNEL-ADDRESS` with the address of the running tunnel. It changes whenever a quick tunnel restarts.
 
@@ -216,34 +235,50 @@ Failure codes: `no_open_offer`, `offer_expired`, `slot_taken`, `invalid_phone`.
 
 ## Authentication
 
-Use variant (a) if the dashboard can send a custom header. The key is `ASSISTANT_API_KEY`, kept only in the shell that starts the assistant app. Never put it in this file.
+Both variants work side by side. The dashboard's form requires variant (b).
 
 ### (a) Header `X-API-Key`
 
-Works today. Send this header on every tool, as shown above:
+For any client that can send a header. The key is `ASSISTANT_API_KEY`, kept only in the shell that starts the assistant app. Never put it in this file.
 
 ```text
 X-API-Key: YOUR-ASSISTANT-API-KEY
 ```
 
-The server also accepts `Authorization: Bearer YOUR-ASSISTANT-API-KEY`, if the dashboard offers only that.
+The server also accepts `Authorization: Bearer YOUR-ASSISTANT-API-KEY`.
 
 ### (b) Long random token in the URL path
 
-Use this only if the dashboard cannot send any custom header. Each tool's URL would become:
+**Built, and required by the Add tool form.** Each tool's Webhook URL is:
 
 ```text
-https://YOUR-TUNNEL-ADDRESS/assistant/YOUR-LONG-RANDOM-TOKEN/info
+https://YOUR-TUNNEL-ADDRESS/assistant/t/YOUR-PATH-TOKEN/info
 ```
 
-**This does not work today, and no change has been made.** It would need:
+The same seven tools answer there, with no header.
 
-1. Mounting the assistant router a second time under a path that includes the token, with a dependency that compares the token in constant time. The current check, `require_assistant_key` in `app/auth.py`, reads headers only.
-2. Changing the logging, because the token would then be in the path. `log_timing` in `app/assistant_main.py` and `_failure` in `app/routers/assistant.py` both write the path, and uvicorn's access log does too. Cloudflare would also see it.
+- Create your own value of at least 32 random characters and export it as `SUISSELINE_PATH_TOKEN` in the shell that starts the assistant app. Never put it in this file, in a screenshot or in a transcript.
+- It fails closed. If the variable is unset or shorter than 32 characters, every token route returns 404. A wrong token also returns 404, so the routes do not announce themselves.
+- The app never writes the token to a log. The token segment of the path is replaced with `[redacted]` in uvicorn's access log, in `log_timing` and in `_failure`.
+- The tunnel provider and Suisse Line both see the full address, so anyone with access to their records can read the token. To replace it, change the variable, restart the app and update all seven Webhook URLs.
+- `venv/bin/python scripts/preflight.py` checks its length and that it differs from the other secrets, without printing it. With `--public-url` it also checks that a token route answers and a wrong token gets 404.
+
+The assistant app reads the variable when a request arrives, but the token routes exist only in code started after this change, so a running app needs a restart.
+
+### Capture mode (rehearsal only)
+
+Capture records what Suisse Line really sends, so the envelope can be read. It is off unless `SUISSELINE_CAPTURE_FILE` is set, and `POST /assistant/t/YOUR-PATH-TOKEN/capture` returns 404 without it.
+
+1. Export `SUISSELINE_CAPTURE_FILE` with a path outside the repository, then start the assistant app.
+2. Point one tool's Webhook URL at `https://YOUR-TUNNEL-ADDRESS/assistant/t/YOUR-PATH-TOKEN/capture` and make one test call with a fictional customer.
+3. Read the file. Each request is one JSON line with `body` (or `body_base64` if it is not text), `content_type` and `header_names`. Header values are never recorded. The file is created with mode 0600.
+4. Unset the variable, restart the app and delete the file, because it can hold transcripts and phone numbers.
+
+The route answers `{"ok": true, "message": "captured"}`. A body over 1 MiB gets 413 and is not recorded.
 
 ## As entered
 
-Fill this in after activation, using the field names the dashboard actually shows.
+Fill this in after activation. Each tool's Webhook URL is the base URL followed by `/assistant/t/YOUR-PATH-TOKEN/` and the tool's path after `/assistant/`.
 
 | Setting | Planned value | Dashboard field name | Value as entered | Checked |
 | --- | --- | --- | --- | --- |
@@ -252,7 +287,7 @@ Fill this in after activation, using the field names the dashboard actually show
 | Starting language | English | | | |
 | Voice | | | | |
 | Base URL | `https://YOUR-TUNNEL-ADDRESS` | | | |
-| Authentication | Variant (a) | | | |
+| Authentication | Variant (b), token in the Webhook URL | Webhook URL | | |
 | Caller number variable | | | | |
 | Call ID variable | | | | |
 | Tool timeout | | | | |

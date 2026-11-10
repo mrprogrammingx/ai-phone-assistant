@@ -722,6 +722,14 @@ EXPECTED_PUBLIC_ROUTES = {
     "/assistant/waitlist",
     "/assistant/waitlist/accept",
     "/assistant/webhook/call-completed",
+    "/assistant/t/{token}/info",
+    "/assistant/t/{token}/availability",
+    "/assistant/t/{token}/bookings",
+    "/assistant/t/{token}/bookings/find",
+    "/assistant/t/{token}/bookings/cancel",
+    "/assistant/t/{token}/waitlist",
+    "/assistant/t/{token}/waitlist/accept",
+    "/assistant/t/{token}/capture",
 }
 
 

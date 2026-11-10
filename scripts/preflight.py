@@ -6,7 +6,8 @@
     venv/bin/python scripts/preflight.py --fallback
 
 Exit code 0 means no check failed. Secret values are compared but never printed, and
-the key is only ever sent to 127.0.0.1 and the one public address given. Nothing here
+the key and the path token are only ever sent to 127.0.0.1 and the one public address
+given. Nothing here
 contacts Suisse Line.
 """
 import argparse
@@ -31,6 +32,7 @@ sys.path.insert(0, str(REPOSITORY))
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
+from app.auth import MINIMUM_PATH_TOKEN_LENGTH
 from app.schema_check import DatabaseSchemaOutOfDate, require_current_schema
 
 TIMEZONE = "Europe/Zurich"
@@ -38,6 +40,8 @@ SECRETS = ("ASSISTANT_API_KEY", "ADMIN_PASSWORD", "SESSION_SECRET_KEY")
 PLACEHOLDER_WORDS = ("change", "replace", "example")
 MINIMUM_SECRET_LENGTH = 24
 WRONG_KEY = "preflight-deliberately-wrong-key"
+WRONG_PATH_TOKEN = "preflight-deliberately-wrong-path-token"
+PATH_TOKEN = "SUISSELINE_PATH_TOKEN"
 MUST_BE_HIDDEN = ("/docs", "/admin/shop-status")
 REQUEST_TIMEOUT_SECONDS = 20
 SQLITE_PREFIX = "sqlite:///"
@@ -127,6 +131,25 @@ def check_secrets(report: Report) -> None:
         report.failure("Secrets differ", "two of the secrets have the same value", f"Give each its own value. {GENERATE}")
     else:
         report.passed("Secrets differ", "no two are the same")
+
+
+def check_path_token(report: Report) -> None:
+    """The dashboard has no header field, so the token routes are how it reaches the tools."""
+    value = os.environ.get(PATH_TOKEN, "")
+    create = f"Create your own value of at least {MINIMUM_PATH_TOKEN_LENGTH} characters and export it as {PATH_TOKEN}."
+    if not value:
+        report.failure(PATH_TOKEN, "not set", create)
+        return
+    if len(value) < MINIMUM_PATH_TOKEN_LENGTH:
+        report.failure(PATH_TOKEN, f"too short, {len(value)} chars", create)
+    else:
+        report.passed(PATH_TOKEN, f"set, {len(value)} chars")
+
+    others = (*SECRETS, "SUISSELINE_WEBHOOK_SECRET", "CALENDAR_FEED_TOKEN")
+    if value in (os.environ.get(name) for name in others):
+        report.failure(f"{PATH_TOKEN} differs", "it has the same value as another secret", create)
+    else:
+        report.passed(f"{PATH_TOKEN} differs", "not the same as any other secret")
 
 
 def check_timezone(report: Report) -> None:
@@ -320,6 +343,30 @@ def check_public_address(report: Report, url: str | None, key: str) -> None:
     elapsed = check_application(report, "Public address", url.rstrip("/"), key, START_TUNNEL)
     if elapsed is not None:
         report.passed("Public address: latency", f"{elapsed:.0f} ms for one info call")
+        check_public_token_routes(report, url.rstrip("/"))
+
+
+def check_public_token_routes(report: Report, url: str) -> None:
+    token = os.environ.get(PATH_TOKEN, "")
+    if len(token) < MINIMUM_PATH_TOKEN_LENGTH:
+        report.skipped("Public address: token route", f"needs a usable {PATH_TOKEN}")
+        return
+
+    status, body, _ = _request(url, "POST", f"/assistant/t/{token}/info")
+    if status == 200 and isinstance(body, dict) and body.get("ok") is True:
+        report.passed("Public address: token route", "ok: true")
+    else:
+        report.failure(
+            "Public address: token route",
+            f"expected ok: true, got status {status}",
+            f"Start the assistant app with {PATH_TOKEN} exported, using the code that has the token routes.",
+        )
+
+    status, _, _ = _request(url, "POST", f"/assistant/t/{WRONG_PATH_TOKEN}/info")
+    if status == 404:
+        report.passed("Public address: wrong token", "404")
+    else:
+        report.failure("Public address: wrong token", f"expected 404, got {status}")
 
 
 def print_tunnel_reminder() -> None:
@@ -356,6 +403,7 @@ def main(arguments: list[str] | None = None) -> int:
     report = Report()
 
     check_secrets(report)
+    check_path_token(report)
     check_timezone(report)
     check_database(report)
     check_email(report, options.allow_real_email)

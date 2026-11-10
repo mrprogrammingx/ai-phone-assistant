@@ -95,6 +95,7 @@ def run(demo_database, assistant_port, tools_path):
             "ADMIN_PASSWORD": ADMIN_PASSWORD,
             "SESSION_SECRET_KEY": SESSION_SECRET,
             "SUISSELINE_WEBHOOK_SECRET": "",
+            "SUISSELINE_PATH_TOKEN": "preflight-test-path-token-0123456789abcdef",
             "APP_TIMEZONE": "Europe/Zurich",
             "DATABASE_URL": f"sqlite:///{demo_database}",
             "EMAIL_DRY_RUN": "true",
@@ -560,6 +561,7 @@ def test_values_are_read_from_a_dotenv_file_and_stay_private(tmp_path, demo_data
     shutil.copy(SCRIPT, copied)
     (tmp_path / ".env").write_text(
         f"ASSISTANT_API_KEY={API_KEY}\nADMIN_PASSWORD={ADMIN_PASSWORD}\nSESSION_SECRET_KEY={SESSION_SECRET}\n"
+        "SUISSELINE_PATH_TOKEN=preflight-test-path-token-0123456789abcdef\n"
         f"APP_TIMEZONE=Europe/Zurich\nDATABASE_URL=sqlite:///{demo_database}\nEMAIL_DRY_RUN=true\n"
     )
 

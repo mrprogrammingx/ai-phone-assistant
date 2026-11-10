@@ -40,6 +40,7 @@ from tests.conftest import TEST_TODAY
 REPO_ROOT = Path(__file__).resolve().parents[1]
 API_KEY = "test-assistant-key"
 WEBHOOK_SECRET = "test-webhook-secret"
+PATH_TOKEN = "fake-path-token-for-tests-0123456789abcdef"
 TODAY = date.fromisoformat(TEST_TODAY)
 OVERSIZED = b'{"name": "' + b"x" * (1024 * 1024) + b'"}'
 
@@ -52,6 +53,7 @@ assistant = TestClient(assistant_app, raise_server_exceptions=False)
 def secrets(monkeypatch):
     monkeypatch.setenv("ASSISTANT_API_KEY", API_KEY)
     monkeypatch.setenv("SUISSELINE_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    monkeypatch.setenv("SUISSELINE_PATH_TOKEN", PATH_TOKEN)
 
 
 @pytest.fixture
@@ -178,7 +180,8 @@ def concrete_paths(path: str) -> list[str]:
 
 MAIN_ROUTES = api_routes(main_app)
 ASSISTANT_ROUTES = api_routes(assistant_app)
-TOOL_ROUTES = [route for route in ASSISTANT_ROUTES if "/webhook/" not in route[1]]
+TOOL_ROUTES = [route for route in ASSISTANT_ROUTES if "/webhook/" not in route[1] and "/t/{token}/" not in route[1]]
+TOKEN_TOOL_ROUTES = [route for route in ASSISTANT_ROUTES if "/t/{token}/" in route[1] and not route[1].endswith("/capture")]
 WEBHOOK_ROUTES = [route for route in ASSISTANT_ROUTES if "/webhook/" in route[1]]
 
 
@@ -187,6 +190,7 @@ def test_the_route_tables_cover_the_whole_api():
     assert {"/queue/checkin", "/queue/my-bookings", "/admin/schedule-settings", "/api/login"} <= main_paths
     assert len(MAIN_ROUTES) >= 27
     assert len(TOOL_ROUTES) == 7
+    assert len(TOKEN_TOOL_ROUTES) == 7
     assert len(WEBHOOK_ROUTES) == 1
 
 
@@ -247,6 +251,27 @@ def booking_state():
             status.notification_emails,
             status.booking_open,
         )
+
+
+@pytest.mark.parametrize("method, path, takes_body", TOKEN_TOOL_ROUTES, ids=[f"{m} {p}" for m, p, _ in TOKEN_TOOL_ROUTES])
+def test_token_routes_answer_bad_input_in_the_same_contract(method, path, takes_body):
+    for name, kwargs in BAD_BODIES.items():
+        where = f"{method} {path} [{name}]"
+
+        response = send(assistant, method, path.replace("{token}", PATH_TOKEN), kwargs)
+
+        assert response.status_code == 200, f"{where} -> {response.status_code} {response.text[:300]}"
+        assert_no_leak(response.text, where)
+        result = response.json()
+        if takes_body:
+            assert result["ok"] is False, where
+            assert result["code"] == "invalid_input", where
+        else:
+            assert result["ok"] is True, where
+
+        refused = send(assistant, method, path.replace("{token}", "wrong-token"), kwargs)
+        assert refused.status_code == 404, where
+        assert refused.json() == {"detail": "Not Found"}, where
 
 
 @pytest.mark.parametrize("method, path, takes_body", TOOL_ROUTES, ids=[f"{m} {p}" for m, p, _ in TOOL_ROUTES])

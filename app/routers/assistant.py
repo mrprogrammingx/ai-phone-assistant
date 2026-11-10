@@ -4,8 +4,11 @@ This router translates between the assistant and the booking service. It contain
 no slot or booking rules. Business outcomes return HTTP 200 with `ok: false`,
 because how Suisse Line's live tools handle other status codes is not documented.
 """
+import base64
 import datetime as dt
+import json
 import logging
+import os
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Request
@@ -15,7 +18,8 @@ from pydantic import AfterValidator, BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.auth import require_assistant_key
+from app.access_log import redact_path
+from app.auth import PATH_TOKEN_PREFIX, require_assistant_key, require_path_token
 from app.database import get_db
 from app.models import QueueEntry, ShopStatus
 from app.schemas import CustomerName
@@ -37,10 +41,20 @@ from app.timezone import APP_TZ, now
 
 logger = logging.getLogger("barbershop.assistant")
 
+# The tools themselves, mounted twice at the bottom of this file: behind the header key,
+# and behind a token in the path for a dashboard that cannot send headers.
+tools = APIRouter()
+
 router = APIRouter(
     prefix="/assistant",
     tags=["assistant"],
     dependencies=[Depends(require_assistant_key)],
+)
+
+token_router = APIRouter(
+    prefix=PATH_TOKEN_PREFIX + "{token}",
+    tags=["assistant"],
+    dependencies=[Depends(require_path_token)],
 )
 
 MAX_OFFERED_SLOTS = 5
@@ -122,7 +136,7 @@ def _ok(**fields) -> dict:
 
 
 def _failure(request: Request, code: str, message: str) -> JSONResponse:
-    logger.info("path=%s result=%s", request.url.path, code)
+    logger.info("path=%s result=%s", redact_path(request.scope["path"]), code)
     return JSONResponse({"ok": False, "code": code, "message": message})
 
 
@@ -136,6 +150,8 @@ def install_error_handlers(app: FastAPI) -> None:
     def _refusal_without_key(request: Request) -> JSONResponse | None:
         """A body that cannot be read fails before the route's key check runs, so the
         key is checked here: without it the answer is the same 401 as for any other call."""
+        if request.scope["path"].startswith(PATH_TOKEN_PREFIX):
+            return None  # A token route has no key, and the app has already checked its token.
         try:
             require_assistant_key(request)
         except HTTPException as refused:
@@ -239,7 +255,7 @@ def _queue_staff_notification(
     )
 
 
-@router.post("/info")
+@tools.post("/info")
 def get_business_info(db: Session = Depends(get_db)):
     shop_status = get_or_create_shop_status(db)
     current = now()
@@ -265,7 +281,7 @@ def get_business_info(db: Session = Depends(get_db)):
     )
 
 
-@router.post("/availability")
+@tools.post("/availability")
 def check_availability(request: AvailabilityRequest, db: Session = Depends(get_db)):
     shop_status = get_or_create_shop_status(db)
     service = _known_service(request.service_id)
@@ -290,7 +306,7 @@ def check_availability(request: AvailabilityRequest, db: Session = Depends(get_d
     )
 
 
-@router.post("/bookings")
+@tools.post("/bookings")
 def create_booking(
     request: CreateBookingRequest,
     background: BackgroundTasks,
@@ -316,19 +332,19 @@ def create_booking(
     return _ok(created=result.created, booking=_booking_out(result.entry))
 
 
-@router.post("/bookings/find")
+@tools.post("/bookings/find")
 def find_booking(request: FindBookingRequest, db: Session = Depends(get_db)):
     entries = upcoming_bookings(db, normalize_phone(request.phone), on_date=request.date)
     return _ok(bookings=[_booking_out(entry) for entry in entries])
 
 
-@router.post("/bookings/cancel")
+@tools.post("/bookings/cancel")
 def cancel(request: CancelBookingRequest, db: Session = Depends(get_db)):
     newly_cancelled = cancel_booking(db, normalize_phone(request.phone), request.date, request.time)
     return _ok(cancelled=True, already_cancelled=not newly_cancelled)
 
 
-@router.post("/waitlist")
+@tools.post("/waitlist")
 def join(request: JoinWaitlistRequest, db: Session = Depends(get_db)):
     service = _known_service(request.service_id)
     result = join_waitlist(
@@ -354,7 +370,7 @@ def join(request: JoinWaitlistRequest, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/waitlist/accept")
+@tools.post("/waitlist/accept")
 def accept(
     request: AcceptOfferRequest,
     background: BackgroundTasks,
@@ -365,3 +381,44 @@ def accept(
     if result.created:
         _queue_staff_notification(background, result.booking, shop_status)
     return _ok(booking=_booking_out(result.booking))
+
+
+MAX_CAPTURE_BYTES = 1024 * 1024
+
+
+# ==========================================================================================
+# REHEARSAL ONLY. DO NOT LEAVE THIS ON.
+#
+# This exists to learn what Suisse Line really sends. It writes the raw request body to
+# disk, and that body is expected to hold call transcripts and phone numbers. It is off
+# unless SUISSELINE_CAPTURE_FILE is set. Unset it after the rehearsal and delete the file.
+# Header values are never recorded, only their names.
+# ==========================================================================================
+@token_router.post("/capture")
+async def capture(request: Request):
+    target = os.getenv("SUISSELINE_CAPTURE_FILE")
+    if not target:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_CAPTURE_BYTES:
+            raise HTTPException(status_code=413, detail="Body too large")
+
+    record = {"content_type": request.headers.get("content-type"), "header_names": list(request.headers.keys())}
+    try:
+        record["body"] = bytes(body).decode("utf-8")
+    except UnicodeDecodeError:
+        record["body_base64"] = base64.b64encode(bytes(body)).decode("ascii")
+
+    descriptor = os.open(target, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    with os.fdopen(descriptor, "a", encoding="utf-8") as capture_file:
+        os.fchmod(capture_file.fileno(), 0o600)  # In case the file already existed.
+        capture_file.write(json.dumps(record) + "\n")
+    return _ok(message="captured")
+
+
+# Last, because including a router copies the routes it holds at that moment.
+router.include_router(tools)
+token_router.include_router(tools)
