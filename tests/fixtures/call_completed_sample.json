@@ -1,0 +1,21 @@
+{
+  "_note": "ASSUMED shape. No Suisse Line account exists, so this is a guess from the public call.completed example plus an invented extracted object. Replace it with a real delivery after activation.",
+  "event": "call.completed",
+  "callId": "call-sample-0001",
+  "agentName": "Barbershop Assistant",
+  "timestamp": "2026-12-01T09:00:00Z",
+  "phoneNumber": "+41790000200",
+  "direction": "inbound",
+  "status": "completed",
+  "duration": 94,
+  "summary": "Fictional caller asked for a Classic Cut.",
+  "transcript": "Fictional transcript that must never be stored.",
+  "recordingUrl": "https://example.invalid/recording",
+  "extracted": {
+    "name": "Fictional Caller",
+    "phone": "+41790000201",
+    "service_id": "classic-cut",
+    "date": "2026-12-02",
+    "time": "14:00"
+  }
+}

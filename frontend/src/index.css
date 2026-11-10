@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f6f2e9;
+  --color-surface: #fffdf8;
+  --color-surface-2: #efe9dc;
+  --color-line: #ddd5c4;
+  --color-accent: #1f5f5b;
+  --color-accent-light: #2b7a74;
+  --color-accent-dark: #174744;
+  --color-content: #1e2b2a;
+  --color-muted: #5b6663;
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-card: 0 1px 2px rgb(30 43 42 / 0.06), 0 12px 28px -20px rgb(30 43 42 / 0.35);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    background-color: var(--color-canvas);
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-content);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+  }
+
+  ::selection {
+    background-color: var(--color-accent);
+    color: var(--color-canvas);
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-accent px-6 py-3 font-body text-sm font-semibold text-canvas transition-colors duration-200 hover:bg-accent-dark;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-accent px-6 py-3 font-body text-sm font-semibold text-accent transition-colors duration-200 hover:bg-accent hover:text-canvas;
+  }
+
+  .eyebrow {
+    @apply font-display text-base font-medium italic text-accent;
+  }
+
+  .section-heading {
+    @apply font-display text-4xl font-semibold leading-tight text-content md:text-5xl;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-light);
+}

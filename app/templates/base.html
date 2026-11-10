@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Demo Barbershop{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { font-size: 1.5rem; }
+    form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 360px; }
+    input { padding: 0.5rem; font-size: 1rem; }
+    button { padding: 0.6rem; font-size: 1rem; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd; }
+    .status { text-transform: capitalize; }
+    nav a { margin-right: 1rem; }
+    #shop-status-banner {
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    #shop-status-banner.open { display: block; background: #e6f4ea; color: #1e7e34; }
+    #shop-status-banner.closed { display: block; background: #fde8e8; color: #b02a2a; }
+    #shop-status-banner .hours { display: block; font-weight: 400; font-size: 0.9rem; margin-top: 0.15rem; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/checkin">Check-in</a>
+    <a href="/admin/dashboard">Staff Admin</a>
+  </nav>
+  <div id="shop-status-banner"></div>
+  {% block content %}{% endblock %}
+  <script>
+    async function adminFetch(url, options) {
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
+        throw new Error("Not authenticated");
+      }
+      return res;
+    }
+
+    const WEEKDAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+    const DAY_LABELS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+    const DAY_ABBR = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+
+    async function loadShopStatusBanner() {
+      try {
+        const res = await fetch("/admin/shop-status");
+        const data = await res.json();
+        const banner = document.getElementById("shop-status-banner");
+        banner.textContent = "";
+
+        const todayCode = WEEKDAY_CODES[new Date().getDay()];
+        const openToday = data.open_days && data.open_days.includes(todayCode);
+        const effectivelyOpen = data.booking_open && openToday;
+
+        if (!openToday) {
+          banner.append(document.createTextNode(`Closed today (${DAY_LABELS[todayCode]})`));
+        } else if (!data.booking_open) {
+          banner.append(document.createTextNode("Booking is closed for today"));
+        } else {
+          banner.append(document.createTextNode("Booking is open"));
+        }
+
+        if (data.open_days && data.open_days.length > 0) {
+          const order = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+          const sorted = order.filter(d => data.open_days.includes(d));
+          const hoursEl = document.createElement("span");
+          hoursEl.className = "hours";
+          hoursEl.textContent = `${sorted.map(d => DAY_ABBR[d]).join(", ")} · ${data.open_time.slice(0, 5)}–${data.close_time.slice(0, 5)}`;
+          banner.append(hoursEl);
+        }
+        banner.className = effectivelyOpen ? "open" : "closed";
+      } catch (e) {
+        // ignore
+      }
+    }
+    loadShopStatusBanner();
+    setInterval(loadShopStatusBanner, 5000);
+  </script>
+</body>
+</html>

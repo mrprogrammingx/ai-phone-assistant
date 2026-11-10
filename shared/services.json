@@ -1,0 +1,49 @@
+{
+  "currency": "CHF",
+  "services": [
+    {
+      "id": "signature-fade",
+      "name": "Signature Fade",
+      "price": 45,
+      "duration_minutes": 45,
+      "description": "A clean, gradual fade at the length you choose, with tidy edges around the ears and neck.",
+      "featured": true
+    },
+    {
+      "id": "classic-cut",
+      "name": "Classic Cut",
+      "price": 35,
+      "duration_minutes": 30,
+      "description": "A timeless scissor haircut, shaped around how you wear your hair day to day."
+    },
+    {
+      "id": "beard-sculpt",
+      "name": "Beard Sculpt",
+      "price": 25,
+      "duration_minutes": 20,
+      "description": "Trimmed and shaped so your beard sits neatly along the jaw and cheek."
+    },
+    {
+      "id": "hot-towel-shave",
+      "name": "Hot Towel Shave",
+      "price": 38,
+      "duration_minutes": 35,
+      "description": "A slow, close shave, with warm towels to soften the skin first."
+    },
+    {
+      "id": "cut-beard-combo",
+      "name": "Cut + Beard Combo",
+      "price": 60,
+      "duration_minutes": 60,
+      "description": "A haircut and a beard trim in one longer visit.",
+      "featured": true
+    },
+    {
+      "id": "junior-cut",
+      "name": "Junior Cut",
+      "price": 22,
+      "duration_minutes": 25,
+      "description": "A relaxed haircut for children aged 12 and under."
+    }
+  ]
+}

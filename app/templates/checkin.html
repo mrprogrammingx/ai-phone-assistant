@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Check In{% endblock %}
+{% block content %}
+  <h1>Join the Queue</h1>
+
+  <div>
+    <label for="date-picker">Date:</label>
+    <input type="date" id="date-picker">
+  </div>
+
+  <h2>Available Times</h2>
+  <div id="slots" class="slots"></div>
+  <p id="slots-message"></p>
+
+  <form id="checkin-form">
+    <input type="text" name="name" placeholder="Full name" required>
+    <input type="tel" name="phone" placeholder="Phone" pattern="^\+?[0-9\s\-()]{7,20}$" title="Enter a valid phone number (at least 7 digits)" required>
+    <input type="text" name="note" placeholder="Note (optional, e.g. requested style)">
+    <button type="submit" id="submit-btn" disabled>Check In</button>
+  </form>
+  <p id="result"></p>
+
+  <h2>My Bookings</h2>
+  <form id="my-bookings-form">
+    <input type="tel" id="my-bookings-phone" placeholder="Your phone" pattern="^\+?[0-9\s\-()]{7,20}$" title="Enter a valid phone number (at least 7 digits)" required>
+    <button type="submit">Look Up</button>
+  </form>
+  <div id="my-bookings-filter" style="display: none;">
+    <label for="my-bookings-date-picker">Date:</label>
+    <input type="date" id="my-bookings-date-picker">
+    <button id="my-bookings-clear-date" type="button">Show All</button>
+  </div>
+  <table id="my-bookings-table" style="display: none;">
+    <thead>
+      <tr><th>Date</th><th>Time</th><th>Status</th><th>Note</th></tr>
+    </thead>
+    <tbody id="my-bookings-body"></tbody>
+  </table>
+  <p id="my-bookings-message"></p>
+
+  <style>
+    .slots { display: flex; flex-wrap: wrap; gap: 0.5rem; max-width: 480px; margin-bottom: 1rem; }
+    .slot-btn { padding: 0.5rem 0.75rem; border: 1px solid #999; background: #fff; cursor: pointer; border-radius: 4px; }
+    .slot-btn.selected { background: #1e7e34; color: #fff; border-color: #1e7e34; }
+    .slot-btn:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
+  </style>
+
+  <script>
+    let selectedTime = null;
+
+    const CHECKIN_WEEKDAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+    const CHECKIN_DAY_LABELS = { mon: "Mondays", tue: "Tuesdays", wed: "Wednesdays", thu: "Thursdays", fri: "Fridays", sat: "Saturdays", sun: "Sundays" };
+
+    function todayIso() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function tomorrowIso() {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().slice(0, 10);
+    }
+
+    function weekdayCodeForDate(isoDate) {
+      const [y, m, d] = isoDate.split("-").map(Number);
+      return CHECKIN_WEEKDAY_CODES[new Date(y, m - 1, d).getDay()];
+    }
+
+    async function loadSlots() {
+      selectedTime = null;
+      document.getElementById("submit-btn").disabled = true;
+
+      const selectedDate = document.getElementById("date-picker").value || todayIso();
+      const container = document.getElementById("slots");
+      const message = document.getElementById("slots-message");
+      container.innerHTML = "";
+
+      const statusRes = await fetch("/admin/shop-status");
+      const status = await statusRes.json();
+
+      if (selectedDate === todayIso() && !status.booking_open) {
+        message.textContent = "Booking is currently closed for today. Please check back later or pick another date.";
+        return;
+      }
+
+      const res = await fetch(`/queue/available-times?for_date=${selectedDate}`);
+
+      if (!res.ok) {
+        const err = await res.json();
+        message.textContent = err.detail;
+        return;
+      }
+
+      const slots = await res.json();
+      if (slots.length === 0) {
+        const weekdayCode = weekdayCodeForDate(selectedDate);
+        if (status.open_days && !status.open_days.includes(weekdayCode)) {
+          message.textContent = `The shop is closed on ${CHECKIN_DAY_LABELS[weekdayCode]}. Please pick another date.`;
+        } else {
+          message.textContent = "No time slots configured for that date.";
+        }
+        return;
+      }
+      message.textContent = "";
+
+      for (const slot of slots) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "slot-btn";
+        btn.textContent = slot.time.slice(0, 5);
+        btn.disabled = !slot.available;
+        btn.addEventListener("click", () => {
+          selectedTime = slot.time;
+          document.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          document.getElementById("submit-btn").disabled = false;
+        });
+        container.appendChild(btn);
+      }
+    }
+
+    document.getElementById("date-picker").addEventListener("change", loadSlots);
+
+    document.getElementById("checkin-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!selectedTime) return;
+      const form = e.target;
+      const payload = {
+        name: form.name.value,
+        phone: form.phone.value,
+        note: form.note.value || null,
+        appointment_date: document.getElementById("date-picker").value || todayIso(),
+        appointment_time: selectedTime,
+      };
+      const res = await fetch("/queue/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = document.getElementById("result");
+      if (res.ok) {
+        const data = await res.json();
+        result.textContent = `You're checked in for ${data.queue_date} at ${data.appointment_time.slice(0, 5)}! Your position is #${data.position}.`;
+        form.reset();
+        loadSlots();
+      } else {
+        const err = await res.json();
+        result.textContent = `Error: ${formatErrorDetail(err.detail)}`;
+        loadSlots();
+      }
+    });
+
+    function formatErrorDetail(detail) {
+      if (Array.isArray(detail)) {
+        return detail.map(item => item.msg || JSON.stringify(item)).join("; ");
+      }
+      return detail;
+    }
+
+    async function initDatePicker() {
+      const picker = document.getElementById("date-picker");
+      picker.min = todayIso();
+      picker.value = todayIso();
+
+      const statusRes = await fetch("/admin/shop-status");
+      const status = await statusRes.json();
+      if (!status.booking_open) {
+        picker.value = tomorrowIso();
+      }
+
+      loadSlots();
+    }
+
+    let myBookingsPhone = null;
+
+    async function loadMyBookings() {
+      if (!myBookingsPhone) return;
+      const selectedDate = document.getElementById("my-bookings-date-picker").value;
+      const url = selectedDate
+        ? `/queue/my-bookings?phone=${encodeURIComponent(myBookingsPhone)}&for_date=${selectedDate}`
+        : `/queue/my-bookings?phone=${encodeURIComponent(myBookingsPhone)}`;
+
+      const res = await fetch(url);
+      const table = document.getElementById("my-bookings-table");
+      const body = document.getElementById("my-bookings-body");
+      const message = document.getElementById("my-bookings-message");
+      body.innerHTML = "";
+
+      if (!res.ok) {
+        const err = await res.json();
+        table.style.display = "none";
+        message.textContent = `Error: ${formatErrorDetail(err.detail)}`;
+        return;
+      }
+
+      const bookings = await res.json();
+      if (bookings.length === 0) {
+        table.style.display = "none";
+        message.textContent = selectedDate
+          ? "No bookings found for that date."
+          : "No bookings found for that phone number.";
+        return;
+      }
+
+      message.textContent = "";
+      table.style.display = "table";
+      for (const booking of bookings) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${booking.queue_date}</td>
+          <td>${booking.appointment_time.slice(0, 5)}</td>
+          <td>${booking.status.replace("_", " ")}</td>
+          <td></td>
+        `;
+        tr.querySelector("td:last-child").textContent = booking.note || "";
+        body.appendChild(tr);
+      }
+    }
+
+    document.getElementById("my-bookings-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      myBookingsPhone = document.getElementById("my-bookings-phone").value;
+      document.getElementById("my-bookings-filter").style.display = "block";
+      document.getElementById("my-bookings-date-picker").value = "";
+      loadMyBookings();
+    });
+
+    document.getElementById("my-bookings-date-picker").addEventListener("change", loadMyBookings);
+    document.getElementById("my-bookings-clear-date").addEventListener("click", () => {
+      document.getElementById("my-bookings-date-picker").value = "";
+      loadMyBookings();
+    });
+
+    initDatePicker();
+  </script>
+{% endblock %}
