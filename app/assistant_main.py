@@ -20,6 +20,7 @@ from app.auth import PATH_TOKEN_PREFIX, path_token_is_valid
 from app.database import Base, engine
 from app.routers import assistant, webhook
 from app.schema_check import require_current_schema
+from app.tool_bodies import ToolBodies
 
 Base.metadata.create_all(bind=engine)
 require_current_schema(engine)
@@ -35,6 +36,9 @@ assistant.install_error_handlers(app)
 app.include_router(assistant.router)
 app.include_router(assistant.token_router)
 app.include_router(webhook.router)
+
+# Added first, so it runs last of all: only after the token has been checked below.
+app.add_middleware(ToolBodies)
 
 
 @app.middleware("http")

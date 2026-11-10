@@ -9,11 +9,13 @@ The same for all seven tools:
 | HTTP Method | `POST` |
 | Preload before agent starts speaking | Leave at the default. Behaviour unverified |
 | Don't wait for result | Leave off, because the assistant must speak each result. Judgement, not tested |
-| Customize webhook payload fields | Leave at the default until the capture has been read |
+| Customize webhook payload fields | Leave at the default. The app reads the default envelope |
 
 The form offers only String or Number and has no required flag, so every parameter below is **String**, and each description says whether it is required. Never choose Number: a phone or date sent as a number is refused.
 
-The request envelope is still unknown. Until a capture has been read, a real call may be answered with `invalid_input`. See `docs/assistant-config.md`, Capture mode.
+Suisse Line sends each call as an envelope, with the parameters at `tool.arguments` next to the transcript, the agent prompt and the call's numbers. The app reads only `tool.arguments`. The observed shape is in section 4 of `docs/PLAN.md`.
+
+The `consent` description must tell the model to send exactly "yes" or "no". Copy it as written below.
 
 ## `get_business_info`
 

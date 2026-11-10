@@ -44,10 +44,10 @@ Nothing here is Verified. Sources were read on 2026-11-09. Statuses are unchange
 | Custom assistant (prompt, greeting, four voices) | Documented | Prompt size limit Unknown. Keep it short, put data behind tools. |
 | English support | Documented, quality Unknown | Test R1. German only if R1 fails. |
 | External API call during a call (live tools) | Documented as a feature, setup Unknown | **The main gate.** Confirm in the dashboard before configuring. |
-| Structured tool arguments | Unknown | Contract stays flat. |
+| Structured tool arguments | Seen in chat test mode: `tool.arguments`, every value as text | The token routes read `tool.arguments` (section 4). The header routes stay flat. |
 | Response changes what the assistant says | Unknown | Proved by R2. |
 | Auth, timeouts, retries for tools | Auth: the Add tool form has no header field (seen in the dashboard). Timeouts and retries Unknown | Token in the URL path (`SUISSELINE_PATH_TOKEN`), with `X-API-Key` or Bearer still accepted. Booking stays safe under retries. |
-| Caller number or call ID sent to tools | Unknown | The assistant asks for the number and reads it back. |
+| Caller number or call ID sent to tools | Seen: `phoneNumber` and `toNumber` (both `null` in chat test mode) and call ids | Never used. The assistant asks for the number and reads it back. |
 | Webhooks | Documented | Basis of the fallback. Header and retry policy Unknown. |
 | Calendar integration | Documented, set up by Suisse Line | Not used. |
 | Native appointment creation | Not available, per the Suisse Line blog | Booking goes through our API. |
@@ -142,14 +142,29 @@ Choose option 1: narrow `/assistant/*` endpoints inside this repository. Option 
 - The startup check also covers `call_requests` when that table exists. The table gained `suggested_times` and `suggested_as_of` after it was first added, so an older copy needs the `ALTER TABLE` commands printed at startup and listed in the README. A database without the table needs nothing. The Postgres commands are untested.
 - On Postgres, appointment status is a native enum: `ALTER TYPE queuestatus ADD VALUE IF NOT EXISTS 'cancelled';` (README). Not tested on Postgres.
 
-### Planned, not built: Suisse Line envelope adapter
+### Suisse Line envelope adapter
 
-Waits for a real capture. Nothing below is built, and the shape of the request is Unknown until a capture has been read.
+**Built.** Read from a real capture in chat test mode. Not yet tested with a live phone call.
 
-1. **Read the capture first.** Where the extracted parameters sit (top level, or nested under which key), whether every value arrives as text, and what the caller number and call id are called. If the parameters arrive flat, or "Customize webhook payload fields" can make them flat, no adapter is needed.
-2. **One small, pure function** in a new `app/services/envelope.py` that takes the parsed body and returns only the tool's parameters. It runs on the token routes only, before the existing request models, so validation and booking rules stay exactly as they are. The header routes keep their flat body.
-3. **Rules.** Only the extracted parameters reach a tool. The transcript and the agent prompt are never read, stored or logged. An envelope it does not recognise gets `invalid_input`, and it never guesses. Whether the caller's number from the envelope may replace the spoken number is a decision for the owner once the capture shows what is there.
-4. **Tests.** A fixture made from the real capture with a fictional customer, covering each tool, an unrecognised shape and the privacy rule, with mutation checks. Afterwards unset `SUISSELINE_CAPTURE_FILE` and delete the capture.
+The body is a JSON object. Seen in three requests from chat test mode:
+
+| Key | Seen |
+| --- | --- |
+| `event` | `tool.invocation` |
+| `agentId`, `agentName`, `callId`, `timestamp`, `mode` (`chat-test`), `startedAt`, `answeredAt`, `direction`, `status` | Call details |
+| `phoneNumber`, `toNumber` | `null` in chat test mode. A real call is expected to fill them, not verified |
+| `transcript`, `agentPrompt`, `agentGreeting` | The call so far and the agent's own text |
+| `tool.name`, `tool.id`, `tool.callId` | Which tool, and ids for this call of it |
+| `tool.arguments` | **The parameters, every value as text** |
+| `tool.conversation` | A list of `{role, text}` turns |
+
+The headers carry `x-suisse-agent-id`, `x-suisse-call-id`, `x-suisse-mode`, `x-suisse-timestamp`, `x-suisse-tool` and `x-suisse-tool-call-id`. There is no signature or auth header, so the token in the path is the only authentication. Bodies were 2.6 to 4 KB and grow with the transcript.
+
+1. **No adapter would have been needed if the parameters arrived flat.** They do not, so "Customize webhook payload fields" stays at its default and the app reads the envelope.
+2. **One small, pure function**, `tool_arguments` in `app/services/envelope.py`. A body with a `tool` object gives `tool.arguments`, which must be an object. A body without a `tool` key is treated as flat, so curl and the existing tests keep working. It runs in `app/tool_bodies.py` on the seven token tool routes only, after the token check and before the request models, so validation and booking rules are unchanged. The header-key routes, capture mode and the webhook are left alone.
+3. **Rules.** Only `tool.arguments` is read. The transcript, agent prompt, conversation, caller and called number and call ids are never logged, stored or echoed, and an error names fields only. The caller's number never replaces the spoken one: a tool without a spoken `phone` gets `invalid_input`. A `tool` that is not an object, or `arguments` that are missing or not an object, get `invalid_input`.
+4. **Size cap.** 256 KB on these routes, checked from `Content-Length` before reading and again while reading. Over it, or an unreadable length, gets HTTP 200 with `invalid_input`. Nesting too deep to parse also gets `invalid_input`.
+5. **Tests.** `tests/test_suisse_envelope.py` uses a fixture with the captured shape and fake values only. All seven tools through the envelope, parity with flat bodies, bad envelopes, no echo, the caller's number, consent, the cap just under and just over, and a real server refusing a huge declared length. 20 mutations of the adapter, all caught. The capture itself was not copied into the repository. Unset `SUISSELINE_CAPTURE_FILE` and delete the capture when it is no longer needed.
 
 ### Optional extra: read-only calendar feed
 
@@ -257,7 +272,8 @@ How the agent works in every phase: inspect, propose, you review, implement one 
 | 4. Public endpoint rehearsal (port 8003, tunnel, remote probes, latency, two-process race) | 1.5 | **Passed through a real tunnel, committed `6af4bf3`.** Median 173 to 226 ms per call, worst 1.2 s, measured from the Mac running the app. A tunnel took over a minute to start answering. |
 | 4b. Webhook fallback (used only if live tools are unavailable) | Not planned | **Built, committed `212a98f`.** Untested against Suisse Line. |
 | 4c. Activation-day package: `scripts/preflight.py` and `docs/demo-runbook.md` | Not planned | **Built and committed.** Local checks pass against a running app. The `--public-url` success path has not been run through a real tunnel, and nothing has been tested on a real call. |
-| 4e. Path-token routes and capture mode (the form has no header field) | Not planned | **Built and committed.** Request envelope still unknown until a capture is read, so no adapter yet. Not tested with a real Suisse Line request. |
+| 4e. Path-token routes and capture mode (the form has no header field) | Not planned | **Built and committed.** A capture from chat test mode has been read. |
+| 4f. Envelope adapter and 256 KB body cap on the token routes | Not planned | **Built and committed.** From the chat-test capture, with a fake fixture. Not tested with a live phone call. |
 | 4d. Read-only calendar feed (optional extra, not part of the Suisse Line path) | Not planned | **Built and committed.** 56 automated tests. No real Google or Apple subscription tested. |
 | 5. Activate the trial and adapt | 2.5 | After section 10 |
 | 6. Configure the assistant, first calls (about 12 min) | 3 | |
@@ -284,7 +300,7 @@ Planned total about 35 to 37 h, of which phases 1, 2, 2b and 3 are done. Estimat
 
 Booking logic is proved by automated tests. Real calls prove only speech, tool wiring and assistant behaviour. Budgeted call time is 34 minutes, leaving 26 of the 60.
 
-**Automated (no trial minutes).** Temporary database and injected clock, never the Mac's zone. Current baseline: 1556 passing (1185 before the text-only parameter rules, 660 with the calendar feed, 604 before it, 150 at Phase 2, 205 with Phase 2b, 229 before Phase 3, 349 with Phase 3, 482 with the webhook fallback, 516 with its retention and suggested times). Cases: invalid or past dates, unknown service, off-grid times, past time today, closed day and blocked slot, conflicts, duplicate and retried bookings, 12-way concurrency across repeated rounds, phone format variants, book-cancel-rebook, auth missing/wrong/unset, admin paths 404 on the assistant app, near-midnight dates (23:30 and 00:30 Zurich), DST (2027-03-28 and 2027-10-31), failing email provider, **interval overlaps, capacity with overlaps, blocked slots inside an interval, closing time, missing-columns startup refusal for `queue_entries` and `call_requests`, changes to cancelled appointments, no-show revival, webhook signature and fail-closed secret, body limit, each follow-up reason, duplicate deliveries sequential and concurrent, no personal data in webhook logs, retention by closing date with an injected clock, suggested times that fit the service, fall through to the next open date, skip past times and never change a booking**, waitlist consent, matching, concurrent acceptance, expiry, retention, and no personal data in logs.
+**Automated (no trial minutes).** Temporary database and injected clock, never the Mac's zone. Current baseline: 1720 passing (1556 before the envelope adapter, 1185 before the text-only parameter rules, 660 with the calendar feed, 604 before it, 150 at Phase 2, 205 with Phase 2b, 229 before Phase 3, 349 with Phase 3, 482 with the webhook fallback, 516 with its retention and suggested times). Cases: invalid or past dates, unknown service, off-grid times, past time today, closed day and blocked slot, conflicts, duplicate and retried bookings, 12-way concurrency across repeated rounds, phone format variants, book-cancel-rebook, auth missing/wrong/unset, admin paths 404 on the assistant app, near-midnight dates (23:30 and 00:30 Zurich), DST (2027-03-28 and 2027-10-31), failing email provider, **interval overlaps, capacity with overlaps, blocked slots inside an interval, closing time, missing-columns startup refusal for `queue_entries` and `call_requests`, changes to cancelled appointments, no-show revival, webhook signature and fail-closed secret, body limit, each follow-up reason, duplicate deliveries sequential and concurrent, no personal data in webhook logs, retention by closing date with an injected clock, suggested times that fit the service, fall through to the next open date, skip past times and never change a booking**, waitlist consent, matching, concurrent acceptance, expiry, retention, and no personal data in logs.
 
 **Real calls (fictional customers only).**
 
@@ -316,7 +332,7 @@ The critical path has one external dependency: live tools usable in the trial. E
 | Risk | Likelihood | Impact | Mitigation or fallback |
 |---|---|---|---|
 | Live tools locked or need team enablement | Unknown | Critical | Ask support first. Fallback is the webhook path. Report before any platform change. |
-| Tool cannot send a custom header | Unknown | High | Long random token in the URL path. |
+| Tool cannot send a custom header | Confirmed: no header field, and no signature or auth header in the capture | High | Long random token in the URL path, the only authentication. |
 | Tool timeout shorter than the round trip through the development machine | Unknown | High | Measure in Phase 4. Keep responses small and email off the request path. |
 | Tunnel or Mac fails during the interview | Medium | High | Keep the Mac awake, test 30 minutes before, backup video. |
 | Trial expires before the interview | Depends on date | High | Activate late, ask about extension, record a video. |

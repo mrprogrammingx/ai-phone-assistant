@@ -263,7 +263,8 @@ def test_token_routes_answer_bad_input_in_the_same_contract(method, path, takes_
         assert response.status_code == 200, f"{where} -> {response.status_code} {response.text[:300]}"
         assert_no_leak(response.text, where)
         result = response.json()
-        if takes_body:
+        # The token routes cap every body at 256 KB, including the tool that takes none.
+        if takes_body or name == "oversized":
             assert result["ok"] is False, where
             assert result["code"] == "invalid_input", where
         else:

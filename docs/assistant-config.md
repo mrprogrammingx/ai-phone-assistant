@@ -1,6 +1,6 @@
 # Suisse Line assistant configuration
 
-What will be entered into the Suisse Line dashboard. The Add tool form's field names are now known, see [The Add tool form](#the-add-tool-form). What the platform actually sends to a tool is still unknown.
+What will be entered into the Suisse Line dashboard. The Add tool form's field names are now known, see [The Add tool form](#the-add-tool-form). What the platform sends to a tool has been read from a capture in chat test mode, see [The request envelope](#the-request-envelope).
 
 The fields, types and failure codes below come from section 6 of `docs/PLAN.md` and `app/routers/assistant.py`.
 
@@ -52,9 +52,11 @@ The form has no header or key field, so tools authenticate with variant (b), [a 
 | Parameters | The `parameters` from the definition below. The form offers only String or Number and has no required flag, so use String for every parameter |
 | Preload before agent starts speaking | Behaviour unverified. Decide after the first test call |
 | Don't wait for result | Behaviour unverified. Leave it off, because the assistant must speak each tool's result. Judgement, not tested |
-| Customize webhook payload fields | Behaviour unverified. Leave the default until the capture has been read |
+| Customize webhook payload fields | Leave the default. The app reads the default envelope |
 
-**The request envelope is still unknown.** A note on the form says each webhook carries an envelope with the transcript, phone numbers, the agent prompt and the extracted parameters. Its exact shape is unknown until a real request has been captured, see [Capture mode](#capture-mode-rehearsal-only). The tool routes still expect a flat JSON body containing only each tool's fields, so a real call may be answered with `invalid_input` until that is resolved. No adapter has been built, because that needs the capture. The plan is in section 4 of `docs/PLAN.md`.
+### The request envelope
+
+Each request is an envelope with the parameters at `tool.arguments`, every value as text, next to the transcript, the agent prompt, the conversation, the caller's and the called number and call ids. The token routes read only `tool.arguments`. A flat body still works, for curl. Nothing else in the envelope is logged, stored or used, and the caller's number never replaces the spoken one. A body over 256 KB gets `invalid_input`. The observed shape is in section 4 of `docs/PLAN.md`. There is no signature or auth header, so keep the token secret.
 
 A phone sent as a number is refused with `invalid_phone`, and a date must be text in the form `YYYY-MM-DD`, so choose String for both.
 
