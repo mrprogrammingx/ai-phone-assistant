@@ -104,7 +104,7 @@ Failure codes: none.
     "type": "object",
     "properties": {
       "date": { "type": "string", "description": "Date as YYYY-MM-DD, shop-local." },
-      "service_id": { "type": "string", "description": "A service id from get_business_info." },
+      "service_id": { "type": "string", "description": "Required. The exact id text from get_business_info, for example classic-cut. Never a number." },
       "from": { "type": "string", "description": "Earliest start time as HH:MM. Optional." },
       "to": { "type": "string", "description": "Latest start time as HH:MM. Optional." }
     },
@@ -133,7 +133,7 @@ Failure codes: `date_past`, `date_too_far`, `shop_closed`, `unknown_service`.
       "phone": { "type": "string", "description": "The caller's phone number, as read back to them." },
       "date": { "type": "string", "description": "Date as YYYY-MM-DD, shop-local." },
       "time": { "type": "string", "description": "Start time as HH:MM, from check_availability." },
-      "service_id": { "type": "string", "description": "A service id from get_business_info." }
+      "service_id": { "type": "string", "description": "Required. The exact id text from get_business_info, for example classic-cut. Never a number." }
     },
     "required": ["name", "phone", "date", "time", "service_id"]
   }
@@ -203,7 +203,7 @@ Failure codes: `not_found`, `invalid_phone`.
     "properties": {
       "name": { "type": "string", "description": "The caller's name." },
       "phone": { "type": "string", "description": "The caller's phone number, as read back to them." },
-      "service_id": { "type": "string", "description": "A service id from get_business_info." },
+      "service_id": { "type": "string", "description": "Required. The exact id text from get_business_info, for example classic-cut. Never a number." },
       "date": { "type": "string", "description": "Date as YYYY-MM-DD, shop-local." },
       "from": { "type": "string", "description": "Earliest acceptable start time as HH:MM." },
       "to": { "type": "string", "description": "Latest acceptable start time as HH:MM." },
@@ -311,7 +311,7 @@ Fill this in after activation. Each tool's Webhook URL is the base URL followed 
 
 Use this only if live tools are unavailable in the trial. The assistant collects details during the call and books nothing. After the call, Suisse Line sends a `call.completed` webhook, and the application books the time or records a follow-up for staff.
 
-**Every field name in this section is unverified.** No account exists, so the webhook's shape, header name and retry behaviour are assumptions. They are isolated in `parse_call_completed` in `app/services/call_requests.py`.
+**Every field name in this section is unverified.** Webhook mode has not been used with the account, so the webhook's shape, header name and retry behaviour are assumptions. They are isolated in `parse_call_completed` in `app/services/call_requests.py`.
 
 ### System prompt for webhook mode
 

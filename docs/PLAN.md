@@ -2,6 +2,8 @@
 
 Revised 2026-11-09 · @Amir · Supersedes the first plan of the same date.
 
+**Status, 2026-11-11.** Live tools have since been configured and exercised in Suisse Line's Chat test mode, and the envelope adapter is built (section 4). A real phone call has not been verified. Sections 1, 2 and 10 keep the plan as it was written before the trial was activated.
+
 ## 0. What changed since revision 1
 
 | Change | Why |

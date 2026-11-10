@@ -1,182 +1,182 @@
-# Demo runbook
+# Demo runbook: the 20-minute interview
 
-The live demo and the backup recording, using only the fictional data from `scripts/seed_demo.py`.
+Only the fictional data from `scripts/seed_demo.py` is used. "Tomorrow" always means tomorrow in shop time, Europe/Zurich.
 
-**Nothing here has been run on a real call.** No Suisse Line account exists, so how live tools behave, and what the assistant actually says, are unverified. The expected times below come from running the same steps against the API on a freshly seeded database. In the demo, `<tomorrow>` means tomorrow's date as `YYYY-MM-DD`.
+**What has been checked.** Every expected answer below was produced by playing the same requests through the token routes and the Suisse Line envelope on a freshly seeded database. The tools have also been exercised in Suisse Line's Chat test mode. **A real phone call has not been verified**, so what the agent says in its own words may differ.
 
-## Starting everything on the day
+## Plan, minute by minute
 
-Open four terminals in the repository. Paste this into each one first, with your own generated values. The `<...>` parts are shell errors on purpose, so it cannot run until you replace them. Never put these values on screen.
+| Minutes | Part | What to show |
+| --- | --- | --- |
+| 0 to 2 | Intro | The problem and the result |
+| 2 to 5 | Architecture | The README diagram, then the three decisions |
+| 5 to 11 | Live call | Book, wrong slot, waitlist with consent, cancel, accept the offer |
+| 11 to 14 | Tests | Run the fast tests live, then the full count |
+| 14 to 17 | Questions | Prepared answers below |
+| 17 to 20 | Reserve | Only for overruns. Never start a new call here |
 
-```bash
-export APP_TIMEZONE=Europe/Zurich DATABASE_URL=sqlite:////tmp/phone-assistant-demo.db EMAIL_DRY_RUN=true ASSISTANT_API_KEY=<paste-the-generated-key> ADMIN_PASSWORD=<paste-a-generated-password> SESSION_SECRET_KEY=<paste-a-generated-secret>
-```
+### 0 to 2: Intro
 
-Secrets must be at least 24 characters, because the preflight script fails shorter ones. Generate each value once with this command:
+Say: "A small barbershop misses calls while the barber is cutting hair. I built a phone assistant on Suisse Line that answers, checks real availability, books, cancels and keeps a waitlist. The booking system is my own, it is the single source of truth, and the website and the phone both book through the same function. My own feature is the Smart Cancellation Waitlist."
 
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-```
+### 2 to 5: Architecture
 
-**Before starting the apps,** in terminal 1, remove any old demo database:
+Show the diagram at the top of `README.md`. Make three points:
 
-```bash
-rm -f /tmp/phone-assistant-demo.db
-```
+1. **One booking function, one lock.** The website and the phone cannot double-book, and a retried booking returns the same appointment.
+2. **Only port 8003 is public**, behind a token in the URL path, because the dashboard's tool form has no header field. A wrong token gets a plain 404, and the token never reaches a log.
+3. **Suisse Line sends the whole call with each tool call**, including the transcript and the caller's number. The app reads only `tool.arguments` and ignores the rest.
 
-Then seed a new one:
+### 5 to 11: Live call
 
-```bash
-venv/bin/python scripts/seed_demo.py
-```
+Have the staff dashboard open on tomorrow, signed in, at `http://127.0.0.1:8002/admin/login`. The seeded day has Anna at 09:00, Ben at 10:00, Clara's combo from 11:00 to 12:00 and David at 14:00.
 
-If the website has not been built in this repository yet, build it once, or the staff dashboard will not be there:
+Call the test number, or use the dashboard's browser test call. Speak slowly. Say the numbers digit by digit.
 
-```bash
-cd frontend && npm ci && npm run build && cd ..
-```
+**Call 1, book (about 90 seconds)**
 
-**Terminal 1, website app first.** Wait until it says it is running. It stays on localhost and is never tunnelled.
-
-```bash
-venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8002
-```
-
-**Terminal 2, assistant app second,** on the same database.
-
-```bash
-venv/bin/uvicorn app.assistant_main:app --host 127.0.0.1 --port 8003
-```
-
-**Terminal 3, the tunnel, assistant app only.** It can take over a minute to start answering. Its address changes every time it restarts.
-
-```bash
-cloudflared tunnel --url http://localhost:8003
-```
-
-**Terminal 4, check before any call.** Put the tunnel's address in the dashboard, then run this. Start the call session only if the last line is `READY`.
-
-```bash
-venv/bin/python scripts/preflight.py --public-url https://YOUR-TUNNEL-ADDRESS
-```
-
-In webhook mode, add `--fallback`, and set `SUISSELINE_WEBHOOK_SECRET` in terminals 2 and 4 first.
-
-```bash
-venv/bin/python scripts/preflight.py --fallback --public-url https://YOUR-TUNNEL-ADDRESS
-```
-
-## The 5-minute demo
-
-Open the staff dashboard first, at `http://127.0.0.1:8002/admin/login`, and sign in. Keep tomorrow's date selected. Log each call in `docs/call-log.md`.
-
-The seeded day tomorrow has Anna at 09:00, Ben at 10:00, Clara's combo from 11:00 to 12:00, and David at 14:00.
-
-### (a) Book the Cut + Beard Combo, about 90 seconds
-
-| Who | What happens |
+| Who | Say or expect |
 | --- | --- |
-| Caller | "Hello, what times do you have tomorrow for a Cut and Beard Combo?" |
-| Assistant | Calls `get_business_info` and `check_availability`. Expected first times: 12:00, 12:30, 13:00, 14:30, 15:00. Earlier times do not fit 60 minutes around the existing bookings. |
-| Caller | "Twelve o'clock, please. My name is Erin Testcase." |
-| Assistant | Asks for a phone number. |
-| Caller | "Zero seven nine, zero zero zero, zero one, zero five." |
-| Assistant | Reads back the Cut + Beard Combo, tomorrow with its weekday, 12:00, Erin Testcase and the number, and waits for a yes. |
-| Caller | "Yes, that's right." |
-| Assistant | Calls `create_booking`, and says it is booked only after `ok: true`. |
+| You | "Hello, what times do you have tomorrow for a Cut and Beard Combo?" |
+| Agent | Expected times: 12:00, 12:30, 13:00, 14:30, 15:00. Earlier times do not fit 60 minutes around the existing bookings. |
+| You | "Twelve o'clock, please. My name is Erin Testcase." |
+| Agent | Asks for a phone number. |
+| You | "Zero seven nine, zero zero zero, zero one, zero five." |
+| Agent | Reads back Cut + Beard Combo, tomorrow with its weekday, 12:00, Erin Testcase and the number, and waits. |
+| You | "Yes, that's right." |
+| Agent | Says it is booked, only after `create_booking` answers `ok: true`. |
 
-Show the 12:00 booking on the staff dashboard.
+Show Erin at 12:00 on the dashboard.
 
-### (b) The full 10:00, then the waitlist, about 60 seconds
+**Call 2, wrong slot, then the waitlist with consent (about 90 seconds)**
 
-| Who | What happens |
+| Who | Say or expect |
 | --- | --- |
-| Caller | "Can I have a Classic Cut tomorrow at ten?" |
-| Assistant | Should ask for name and number, and read them back. |
-| Caller | "Finn Madeup. Zero seven nine, zero zero zero, zero one, zero six. Yes, that's right." |
-| Assistant | Calls `create_booking`, which returns `slot_taken`. Says 10:00 is taken and offers alternatives. Expected between 09:00 and 11:00: 09:30 and 10:30. Then offers the waitlist. |
-| Caller | "I really need ten. Can you put me on the waitlist?" |
-| Assistant | Asks permission to contact the caller, and says a waitlist place is not an appointment and the slot is not reserved. |
-| Caller | "Yes, you can contact me." |
-| Assistant | Calls `join_waitlist` with consent true, for 10:00 to 10:00. |
+| You | "Can I have a Classic Cut tomorrow at ten? My name is Finn Madeup, zero seven nine, zero zero zero, zero one, zero six." |
+| Agent | Reads back and waits. |
+| You | "Yes, that's right." |
+| Agent | 10:00 is taken (`slot_taken`). Offers 09:30 and 10:30, then the waitlist. |
+| You | "I really need ten. Can you put me on the waitlist?" |
+| Agent | Asks permission to contact you about a freed time, and says a waitlist place is not an appointment. |
+| You | "Yes, you can contact me." |
+| Agent | Calls `join_waitlist` with consent "yes", for 10:00 to 10:00. |
 
-### (c) Free the 10:00, about 30 seconds, no call
+Say: "Consent arrives as text, and only a clear yes counts. A no, a 1 or an 'on' is refused."
 
-Cancel Ben's booking through the tool, with the key from your terminal's environment:
+**Call 3, cancel (about 40 seconds)**
 
-```bash
-curl -s -X POST http://127.0.0.1:8003/assistant/bookings/cancel -H "X-API-Key: $ASSISTANT_API_KEY" -H "Content-Type: application/json" -d '{"phone":"+41790000102","date":"<tomorrow>","time":"10:00"}'
-```
+| Who | Say or expect |
+| --- | --- |
+| You | "Hello, I'd like to cancel my appointment tomorrow at ten. My number is zero seven nine, zero zero zero, zero one, zero two." |
+| Agent | Confirms the number, date and time, then says it is cancelled after `ok: true`. |
 
-Then release the time:
+**Release the time (about 20 seconds, no call).** In terminal 4:
 
 ```bash
 venv/bin/python -m app.scripts.release_slot <tomorrow> 10:00
 ```
 
-Show the output. It starts with `MANUAL CONTACT: nothing was sent. The slot is not reserved.` and lists Finn Madeup. Say out loud that you are now contacting Finn by hand. The offer lasts 30 minutes, or until the slot starts if that is sooner.
+The output starts with `MANUAL CONTACT: nothing was sent. The slot is not reserved.` and lists Finn Madeup. Say: "The offer lasts 30 minutes, or until the slot starts. It does not reserve the time. Anyone can still book it, and the first confirmed booking wins."
 
-### (d) Accept the offer, about 40 seconds
+**Call 4, accept the offer (about 40 seconds)**
 
-| Who | What happens |
+| Who | Say or expect |
 | --- | --- |
-| Caller | "Hello, this is Finn Madeup. You offered me ten o'clock tomorrow. I'd like to take it. My number is zero seven nine, zero zero zero, zero one, zero six." |
-| Assistant | Calls `accept_waitlist_offer`. Says it is booked only after success. |
+| You | "Hello, this is Finn Madeup. You offered me ten o'clock tomorrow. I'd like to take it. My number is zero seven nine, zero zero zero, zero one, zero six." |
+| Agent | Calls `accept_waitlist_offer`, and says it is booked only after success. |
 
-Show Finn's 10:00 on the staff dashboard.
+Show Finn at 10:00 and Ben's cancelled appointment on the dashboard.
 
-### (e) What staff see, about 30 seconds
-
-Show the dashboard's list for tomorrow. In webhook mode only, also show follow-ups:
+If call 3 does not work by voice, cancel Ben off camera with this, then release as above:
 
 ```bash
-venv/bin/python -m app.scripts.list_requests
+curl -s -X POST "http://127.0.0.1:8003/assistant/t/$SUISSELINE_PATH_TOKEN/bookings/cancel" -H 'Content-Type: application/json' -d '{"phone":"+41790000102","date":"<tomorrow>","time":"10:00"}'
 ```
+
+### 11 to 14: Tests
+
+Run the two fast files live, 535 tests in about 12 seconds:
+
+```bash
+venv/bin/python -m pytest -q tests/test_suisse_envelope.py tests/test_text_parameters.py
+```
+
+Then say:
+
+- The full suite is 1720 tests and takes about 2.5 minutes, so it was run before the interview. Run it again the same morning and quote that result.
+- The property tests generate names, phone spellings, dates and random booking sequences, and check that no moment ever has more appointments than the capacity.
+- Mutation checks: each rule was broken on purpose, and the tests had to fail. For example, 20 faults were planted in the envelope adapter, and all 20 were caught.
+- The Chat test found a real problem: the agent sent `service_id` "1" and skipped the read-back. The app refused the unknown service and booked nothing, and the prompt was tightened.
+
+### 14 to 17: Questions
+
+| Likely question | Short answer |
+| --- | --- |
+| Why your own booking system? | One source of truth, a real lock and retries that are safe. Suisse Line's native booking is not available, and a calendar sync would add a second truth. |
+| What if two callers want the same time? | One atomic lock. Exactly one succeeds, tested with 12 at once over repeated rounds. |
+| What if Suisse Line retries a booking? | The same phone, date and time returns the same booking with `created: false`. |
+| Is the token in the URL safe? | It is the only option the form offers. It is long, compared in constant time and redacted from every log. Rotate it after the demo. |
+| What about privacy? | Only name, phone, service and time are stored. Transcripts are never stored. Waitlist rows are deleted 30 days after closing. |
+| What would you do next? | A real phone call test, rescheduling, and automatic waitlist matching when an appointment is cancelled. |
+
+## Pre-flight checklist
+
+Do this 30 minutes before. Never show a key, password, token or tunnel address on screen.
+
+- [ ] `caffeinate -d` running in its own terminal, so the Mac does not sleep.
+- [ ] A fresh demo database, seeded:
+
+```bash
+rm -f /tmp/phone-assistant-demo.db
+```
+
+```bash
+DATABASE_URL=sqlite:////tmp/phone-assistant-demo.db venv/bin/python scripts/seed_demo.py
+```
+
+- [ ] In terminals 1, 2 and 4, the same settings. The `<...>` parts are shell errors on purpose, until you replace them with your own values:
+
+```bash
+export APP_TIMEZONE=Europe/Zurich DATABASE_URL=sqlite:////tmp/phone-assistant-demo.db EMAIL_DRY_RUN=true ASSISTANT_API_KEY=<your-key> SUISSELINE_PATH_TOKEN=<your-path-token> ADMIN_PASSWORD=<your-password> SESSION_SECRET_KEY=<your-secret>
+```
+
+- [ ] Terminal 1, the website first: `venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8002`. If `frontend/dist` is missing, build it first: `cd frontend && npm ci && npm run build && cd ..`.
+- [ ] Terminal 2, the assistant: `venv/bin/uvicorn app.assistant_main:app --host 127.0.0.1 --port 8003`.
+- [ ] Terminal 3, the tunnel is up: `cloudflared tunnel --url http://localhost:8003`. It can take over a minute to start answering.
+- [ ] If the tunnel address changed, update all 7 Webhook URLs in the dashboard, per `docs/dashboard-entry.md`.
+- [ ] Terminal 4, the preflight says `READY`:
+
+```bash
+venv/bin/python scripts/preflight.py --public-url https://YOUR-TUNNEL-ADDRESS
+```
+
+- [ ] The dashboard's system prompt matches `docs/assistant-config.md`, including the two newest Booking lines.
+- [ ] Staff dashboard signed in, on tomorrow.
+- [ ] At least 10 trial minutes are left for the demo. While rehearsing on earlier days, stop testing at 20 minutes remaining.
+- [ ] Notifications off, other windows closed, terminal scrollback cleared.
+- [ ] The backup video opens and plays.
+
+## If the live call fails
+
+Decide within 30 seconds, and say what you are doing.
+
+| Problem | Do this |
+| --- | --- |
+| The call does not connect, or the voice is not understood | **Chat test.** Open the dashboard's Chat test and type the same sentences. It calls the same tools through the same tunnel, and was verified this way. |
+| Tools fail: the agent says it cannot check, or the preflight fails | Check terminal 2 for requests. If the tunnel is down, restart it, update the 7 URLs and rerun the preflight. If that takes more than 2 minutes, go to the video. |
+| Live tools themselves are unavailable on the platform | **Webhook mode.** Only if it was prepared beforehand: set `SUISSELINE_WEBHOOK_SECRET` in terminals 2 and 4, switch to the webhook prompt in `docs/assistant-config.md`, and run the preflight with `--fallback`. The agent books nothing during the call, and staff confirm afterwards with `venv/bin/python -m app.scripts.list_requests`. |
+| Nothing works within 2 minutes | **Recorded video.** Play it, and narrate the same four calls. |
+| The agent confirms before `ok: true` | Stop, say it is a prompt failure, and show that the dashboard has no booking. The backend is the only source of a booking. |
 
 ## What to say about the limits
 
-- The waitlist contact step is manual. Nothing is sent to the customer automatically, and I contact them myself.
-- An offer never reserves the slot. Anyone can still book it, and the first confirmed booking wins.
+- Verified in Chat test mode, not on a real phone call.
+- The waitlist contact step is manual. Nothing is sent to the customer.
+- An offer never reserves the slot, and the first confirmed booking wins.
 - The caller is identified by phone number only. That is knowledge, not proof of identity.
-- In webhook mode the assistant cannot see the calendar and books nothing during the call. A complete request may be booked afterwards, but the caller only hears that the team will confirm, so staff must phone back.
-- A website booking still takes one slot length, because the website has no service picker.
-- The booking lock and everything concurrent has been tested on SQLite only, not Postgres.
+- The lock and everything concurrent has been tested on SQLite only.
+- A quick tunnel's address changes on restart, so the 7 URLs must then be updated.
 
-## When it goes wrong
+## Recording the backup video
 
-Stop testing at **20 minutes remaining** and keep those minutes for the interview.
-
-| Problem | The one action to take |
-| --- | --- |
-| Tunnel not answering | Wait up to 2 minutes, then run the preflight with `--public-url`. If it still fails, use the backup video. |
-| 401 from the tools | Re-enter the key in the dashboard from the value set in terminal 2, then run the preflight. |
-| A tool times out | Check the staff dashboard for the booking before any retry, and let the assistant call `find_booking` once. If it repeats, use the backup video. |
-| The assistant confirms early | End the call, log it as failed, and make one prompt change from the 4-minute reserve. |
-| English not understood | Repeat once, slowly. If it still fails, end the call and use the backup video. |
-| Minutes running low | At 20 minutes remaining, stop testing and keep the rest for the interview. |
-
-## Recording checklist for the backup video
-
-Before recording:
-
-- [ ] A freshly seeded demo database, with fictional customers only
-- [ ] The preflight says `READY`
-- [ ] Terminal history and scrollback cleared
-- [ ] Notifications off, and other windows closed
-- [ ] The Suisse Line dashboard's API, tool and webhook settings out of frame
-
-Capture, in this order:
-
-- [ ] (a) The call booking the Cut + Beard Combo, then the dashboard showing it
-- [ ] (b) The call asking for 10:00, hearing it is taken, and joining the waitlist with consent
-- [ ] (c) The `release_slot` output with its banner. Run the cancel command off camera
-- [ ] (d) The call accepting the offer, then the dashboard showing Finn at 10:00
-- [ ] (e) The staff dashboard, and `list_requests` if using webhook mode
-
-Check before keeping it:
-
-- [ ] No key, password, secret or `.env` content on screen
-- [ ] No tunnel address on screen, and none spoken
-- [ ] No real name or phone number anywhere
-
-Store it outside the repository, for example in `~/Documents/suisse-line-demo/`, and never commit it.
+Record the four calls above, the `release_slot` output and the dashboard after each call, on a freshly seeded database. Before keeping it, check that no key, password, token, `.env` content or tunnel address is on screen or spoken, and that only fictional names and numbers appear. Store it outside the repository, for example in `~/Documents/suisse-line-demo/`, and never commit it.
