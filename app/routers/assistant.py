@@ -8,11 +8,12 @@ import datetime as dt
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints, field_validator
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.auth import require_assistant_key
 from app.database import get_db
@@ -127,8 +128,36 @@ def _failure(request: Request, code: str, message: str) -> JSONResponse:
 def install_error_handlers(app: FastAPI) -> None:
     """Turns business outcomes into the `ok: false` response the assistant understands."""
 
+    def _is_tool_path(request: Request) -> bool:
+        path = request.url.path
+        return path.startswith(router.prefix + "/") and not path.startswith(router.prefix + "/webhook/")
+
+    def _refusal_without_key(request: Request) -> JSONResponse | None:
+        """A body that cannot be read fails before the route's key check runs, so the
+        key is checked here: without it the answer is the same 401 as for any other call."""
+        try:
+            require_assistant_key(request)
+        except HTTPException as refused:
+            return JSONResponse({"detail": refused.detail}, status_code=refused.status_code)
+        return None
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(request: Request, error: StarletteHTTPException):
+        # FastAPI answers a body it cannot decode with a bare 400. For a tool that is
+        # invalid input like any other, so it gets the tool's usual answer.
+        if error.status_code == 400 and _is_tool_path(request):
+            return _refusal_without_key(request) or _failure(
+                request, "invalid_input", "The request must be a JSON object containing this tool's fields."
+            )
+        # Everything else keeps FastAPI's usual answer.
+        return JSONResponse({"detail": error.detail}, status_code=error.status_code, headers=error.headers)
+
     @app.exception_handler(RequestValidationError)
     async def _invalid_input(request: Request, error: RequestValidationError):
+        if _is_tool_path(request):
+            refused = _refusal_without_key(request)
+            if refused is not None:
+                return refused
         # Names the fields only. The caller's values must not be echoed or logged.
         fields = sorted(
             {part for item in error.errors() for part in item["loc"][1:] if isinstance(part, str)}

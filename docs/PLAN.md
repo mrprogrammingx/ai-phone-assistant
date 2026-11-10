@@ -179,7 +179,7 @@ Automatic detection on cancellation is P1. Automatic notification is not planned
 
 All JSON, all behind an API key. Method, headers and parameter types may still change after dashboard checklist step 5.
 
-**Conventions.** Base path `/assistant`, method POST with flat JSON fields. Auth: `X-API-Key` or `Authorization: Bearer`. A missing or wrong key returns **HTTP 401** (not `ok: false`). Business outcomes return HTTP 200 with `ok: true` or `ok: false, code, message`. Invalid input returns `code: invalid_input` and the message names the failing fields only, never their values. Empty strings for optional fields are treated as missing. Dates `YYYY-MM-DD`, times `HH:MM`, shop-local. The assistant must not treat any text as a confirmation unless `ok` is true.
+**Conventions.** Base path `/assistant`, method POST with flat JSON fields. Auth: `X-API-Key` or `Authorization: Bearer`. A missing or wrong key returns **HTTP 401** (not `ok: false`). Business outcomes return HTTP 200 with `ok: true` or `ok: false, code, message`. Invalid input returns `code: invalid_input` and the message names the failing fields only, never their values. A body that is not JSON, or not readable text, is invalid input too. The key is checked first in every case, so a malformed body without a key gets the 401. Empty strings for optional fields are treated as missing. Dates `YYYY-MM-DD`, times `HH:MM`, shop-local. The assistant must not treat any text as a confirmation unless `ok` is true.
 
 | Tool and path | Request | Success | Failure codes | Status |
 |---|---|---|---|---|

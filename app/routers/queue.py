@@ -1,6 +1,7 @@
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,9 @@ from app.services.booking import (
 )
 from app.services.email import send_admin_checkin_notification
 from app.timezone import today as get_today
+
+# An id beyond what the database can hold is refused here, not by a database error.
+EntryId = Annotated[int, Path(ge=1, le=2_147_483_647)]
 
 # Public: check-in, availability, and a customer's own booking lookup.
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -143,7 +147,7 @@ def get_history_for_date(queue_date: date, db: Session = Depends(get_db)):
 
 
 @admin_router.get("/{entry_id}/position", response_model=QueueEntryOut)
-def get_position(entry_id: int, db: Session = Depends(get_db)):
+def get_position(entry_id: EntryId, db: Session = Depends(get_db)):
     entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id).first()
     if entry is None:
         raise HTTPException(status_code=404, detail="Queue entry not found")
@@ -151,7 +155,7 @@ def get_position(entry_id: int, db: Session = Depends(get_db)):
 
 
 @admin_router.post("/{entry_id}/note", response_model=QueueEntryOut)
-def set_note(entry_id: int, payload: QueueNoteUpdate, db: Session = Depends(get_db)):
+def set_note(entry_id: EntryId, payload: QueueNoteUpdate, db: Session = Depends(get_db)):
     entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id).first()
     if entry is None:
         raise HTTPException(status_code=404, detail="Queue entry not found")
@@ -214,7 +218,7 @@ def _refuse_if_cancelled(entry: QueueEntry) -> None:
 
 
 @admin_router.post("/{entry_id}/done", response_model=QueueEntryOut)
-def mark_done(entry_id: int, db: Session = Depends(get_db)):
+def mark_done(entry_id: EntryId, db: Session = Depends(get_db)):
     entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id).first()
     if entry is None:
         raise HTTPException(status_code=404, detail="Queue entry not found")
@@ -234,7 +238,7 @@ def mark_done(entry_id: int, db: Session = Depends(get_db)):
 
 
 @admin_router.post("/{entry_id}/no-show", response_model=QueueEntryOut)
-def mark_no_show(entry_id: int, db: Session = Depends(get_db)):
+def mark_no_show(entry_id: EntryId, db: Session = Depends(get_db)):
     entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id).first()
     if entry is None:
         raise HTTPException(status_code=404, detail="Queue entry not found")
