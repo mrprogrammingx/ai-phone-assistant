@@ -1,6 +1,8 @@
 // Talks to the backend's admin-only endpoints. Session auth via cookie, so
 // every request needs credentials: "include" (matters when frontend and API
 // run on different origins/ports in dev).
+import { errorMessage } from "./errorMessage";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 export class AuthError extends Error {}
@@ -17,16 +19,14 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
-    let detail = `Request failed (${res.status})`;
+    let detail;
     try {
       const body = await res.json();
-      if (body?.detail) {
-        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-      }
+      detail = body?.detail;
     } catch {
       // ignore non-JSON error bodies
     }
-    throw new Error(detail);
+    throw new Error(errorMessage(detail, res.status));
   }
 
   if (res.status === 204) return null;

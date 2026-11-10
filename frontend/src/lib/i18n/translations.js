@@ -94,6 +94,7 @@ const en = {
   "bookingForm.fullNamePlaceholder": "Max Muster",
   "bookingForm.phoneNumber": "Phone number",
   "bookingForm.phonePlaceholder": "+41 79 000 00 00",
+  "bookingForm.invalidPhone": "Enter a valid phone number (at least 7 digits)",
   "bookingForm.noteLabel": "Note (optional)",
   "bookingForm.notePlaceholder": "Anything we should know, such as short on the sides",
   "bookingForm.booking": "Booking…",

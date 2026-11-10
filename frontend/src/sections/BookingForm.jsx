@@ -7,6 +7,13 @@ import { todayISO } from "../lib/format";
 import { formatDateLabelLong, formatTimeLabel } from "../lib/i18n/dateFormat";
 import { useLanguage } from "../lib/i18n/LanguageContext";
 
+// The same rule as validate_phone in app/schemas.py. The backend still decides.
+function isValidPhone(value) {
+  const phone = value.trim();
+  const digits = phone.replace(/\D/g, "").length;
+  return /^\+?[0-9\s\-()]{7,20}$/.test(phone) && digits >= 7;
+}
+
 export default function BookingForm() {
   const { t } = useLanguage();
   const [date, setDate] = useState(todayISO());
@@ -18,6 +25,7 @@ export default function BookingForm() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
+  const [phoneInvalid, setPhoneInvalid] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -48,8 +56,12 @@ export default function BookingForm() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!selectedTime) return;
-    setSubmitting(true);
     setSubmitError(null);
+    if (!isValidPhone(phone)) {
+      setPhoneInvalid(true);
+      return;
+    }
+    setSubmitting(true);
 
     try {
       const entry = await checkIn({
@@ -179,10 +191,20 @@ export default function BookingForm() {
             required
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              setPhoneInvalid(false);
+            }}
             placeholder={t("bookingForm.phonePlaceholder")}
+            aria-invalid={phoneInvalid}
+            aria-describedby={phoneInvalid ? "phone-error" : undefined}
             className="w-full rounded-lg border border-line bg-canvas px-4 py-3 text-content outline-none transition-colors focus:border-accent"
           />
+          {phoneInvalid && (
+            <p id="phone-error" className="mt-2 text-sm text-red-700">
+              {t("bookingForm.invalidPhone")}
+            </p>
+          )}
         </div>
 
         <div>
