@@ -92,6 +92,7 @@ const en = {
   "bookingForm.closedOnDate": "The shop is closed on this date. Try another day.",
   "bookingForm.fullName": "Full name",
   "bookingForm.fullNamePlaceholder": "Max Muster",
+  "bookingForm.blankName": "Enter your name",
   "bookingForm.phoneNumber": "Phone number",
   "bookingForm.phonePlaceholder": "+41 79 000 00 00",
   "bookingForm.invalidPhone": "Enter a valid phone number (at least 7 digits)",

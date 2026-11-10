@@ -19,12 +19,24 @@ def validate_phone(value: str) -> str:
     return value
 
 
+def validate_name(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Enter your name")
+    return value
+
+
 class CheckInRequest(BaseModel):
     name: str
     phone: str
     appointment_date: date
     appointment_time: time
     note: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value):
+        return validate_name(value)
 
     @field_validator("phone")
     @classmethod

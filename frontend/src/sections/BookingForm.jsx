@@ -25,6 +25,7 @@ export default function BookingForm() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
+  const [nameBlank, setNameBlank] = useState(false);
   const [phoneInvalid, setPhoneInvalid] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -57,10 +58,12 @@ export default function BookingForm() {
     e.preventDefault();
     if (!selectedTime) return;
     setSubmitError(null);
-    if (!isValidPhone(phone)) {
-      setPhoneInvalid(true);
-      return;
-    }
+    // The same rules as app/schemas.py. The backend still decides.
+    const blank = name.trim() === "";
+    const invalid = !isValidPhone(phone);
+    setNameBlank(blank);
+    setPhoneInvalid(invalid);
+    if (blank || invalid) return;
     setSubmitting(true);
 
     try {
@@ -176,10 +179,20 @@ export default function BookingForm() {
             id="name"
             required
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameBlank(false);
+            }}
             placeholder={t("bookingForm.fullNamePlaceholder")}
+            aria-invalid={nameBlank}
+            aria-describedby={nameBlank ? "name-error" : undefined}
             className="w-full rounded-lg border border-line bg-canvas px-4 py-3 text-content outline-none transition-colors focus:border-accent"
           />
+          {nameBlank && (
+            <p id="name-error" className="mt-2 text-sm text-red-700">
+              {t("bookingForm.blankName")}
+            </p>
+          )}
         </div>
 
         <div>
