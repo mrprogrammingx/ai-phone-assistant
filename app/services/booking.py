@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import BlockedSlot, Customer, IncludedSlot, QueueEntry, QueueStatus, ShopStatus
+from app.phone import InvalidPhone, normalize_phone  # noqa: F401  (imported from here by callers)
 from app.schemas import AvailableSlotOut
 from app.timezone import interval_is_unambiguous, now
 
@@ -34,6 +35,11 @@ SLOT_RELEASING_STATUSES = (QueueStatus.no_show, QueueStatus.cancelled)
 NOT_STARTED_STATUSES = (QueueStatus.waiting, QueueStatus.next)
 
 PAST_DATE_MESSAGE = "Cannot book a date in the past"
+
+# How far ahead anyone can book, look up times or join the waitlist: the website, the
+# phone assistant and the webhook alike. Day 90 from today is the last bookable day.
+BOOKING_HORIZON_DAYS = 90
+TOO_FAR_MESSAGE = f"We only take bookings up to {BOOKING_HORIZON_DAYS} days ahead"
 INVALID_SCHEDULE_MESSAGE = "Booking is not available at the moment"
 
 # A full day of the shortest slot staff can set (24 hours of 5 minutes). The slot
@@ -57,25 +63,14 @@ class BookingNotFound(Exception):
     pass
 
 
-class InvalidPhone(ValueError):
-    pass
-
-
-def normalize_phone(raw: str) -> str:
-    """Converts a spoken or typed number to E.164. National numbers are assumed Swiss."""
-    compact = re.sub(r"[\s().\-/]", "", raw.replace("(0)", ""))
-    if compact.startswith("00"):
-        compact = "+" + compact[2:]
-    elif compact.startswith("0"):
-        compact = "+41" + compact[1:]
-    elif compact.startswith("41") and len(compact) == 11:
-        compact = "+" + compact
-
-    if not re.fullmatch(r"\+[1-9][0-9]{7,14}", compact):
-        raise InvalidPhone(raw)
-    if compact.startswith("+41") and len(compact) != 12:
-        raise InvalidPhone(raw)
-    return compact
+def date_rejection(day: date) -> BookingRejected | None:
+    """Why nothing can be booked on this date at all, or None if the date is in range."""
+    current = now().date()
+    if day < current:
+        return BookingRejected("date_past", PAST_DATE_MESSAGE)
+    if (day - current).days > BOOKING_HORIZON_DAYS:
+        return BookingRejected("date_too_far", TOO_FAR_MESSAGE)
+    return None
 
 
 def get_or_create_shop_status(db: Session) -> ShopStatus:
@@ -220,8 +215,9 @@ def _rejection(day: _DaySchedule, slot: time, minutes: int) -> BookingRejected |
     current = now()
     is_today = day.queue_date == current.date()
 
-    if day.queue_date < current.date():
-        return BookingRejected("date_past", PAST_DATE_MESSAGE)
+    out_of_range = date_rejection(day.queue_date)
+    if out_of_range is not None:
+        return out_of_range
     if not _schedule_is_usable(day.shop_status):
         return BookingRejected("booking_closed", INVALID_SCHEDULE_MESSAGE)
     if is_today and not day.shop_status.booking_open:
@@ -249,8 +245,9 @@ def slot_availability(
     db: Session, queue_date: date, duration_minutes: int | None = None
 ) -> list[AvailableSlotOut]:
     """Availability for an appointment of this length, by default one slot length."""
-    if queue_date < now().date():
-        raise BookingRejected("date_past", PAST_DATE_MESSAGE)
+    out_of_range = date_rejection(queue_date)
+    if out_of_range is not None:
+        raise out_of_range
 
     shop_status = get_or_create_shop_status(db)
     if not _schedule_is_usable(shop_status):
@@ -313,6 +310,18 @@ class BookingResult:
     created: bool
 
 
+def find_customer(db: Session, phone: str, phone_as_typed: str | None = None) -> Customer | None:
+    """The customer with this normalised number, or else with exactly the typed string.
+
+    Customers saved before numbers were normalised keep their stored spelling, so
+    they are found only by typing it the same way again.
+    """
+    customer = db.query(Customer).filter(Customer.phone == phone).first()
+    if customer is None and phone_as_typed and phone_as_typed != phone:
+        customer = db.query(Customer).filter(Customer.phone == phone_as_typed).first()
+    return customer
+
+
 def _bookings_at(db: Session, phone: str, appointment_date: date, appointment_time: time):
     return (
         db.query(QueueEntry)
@@ -335,12 +344,18 @@ def book_slot(
     appointment_date: date,
     appointment_time: time,
     note: str | None = None,
+    phone_as_typed: str | None = None,
 ) -> QueueEntry:
-    """Books a slot for the public website, or raises BookingRejected."""
+    """Books a slot for the public website, or raises BookingRejected.
+
+    `phone` is the normalised number. `phone_as_typed` also finds a customer who was
+    stored before numbers were normalised.
+    """
     return _book(
         db,
         name=name,
         phone=phone,
+        phone_as_typed=phone_as_typed,
         appointment_date=appointment_date,
         appointment_time=appointment_time,
         note=note,
@@ -406,6 +421,7 @@ def book_in_lock(
     rename_existing_customer: bool,
     service_id: str | None = None,
     duration_minutes: int | None = None,
+    phone_as_typed: str | None = None,
 ) -> BookingResult:
     """The only code that creates appointments. Holds the lock and never commits."""
     acquire_booking_lock(db)
@@ -422,7 +438,7 @@ def book_in_lock(
     minutes = duration_minutes or shop_status.slot_duration_minutes
     ensure_bookable(db, shop_status, appointment_date, appointment_time, minutes)
 
-    customer = db.query(Customer).filter(Customer.phone == phone).first()
+    customer = find_customer(db, phone, phone_as_typed)
     if customer is None:
         customer = Customer(name=name, phone=phone)
         db.add(customer)

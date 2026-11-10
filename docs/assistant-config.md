@@ -86,7 +86,9 @@ Failure codes: none.
 }
 ```
 
-Failure codes: `date_past`, `shop_closed`, `unknown_service`.
+Failure codes: `date_past`, `date_too_far`, `shop_closed`, `unknown_service`.
+
+`date_too_far` means the date is more than 90 days ahead. The assistant should offer an earlier date.
 
 ### create_booking
 
@@ -111,7 +113,9 @@ Failure codes: `date_past`, `shop_closed`, `unknown_service`.
 }
 ```
 
-Failure codes: `slot_taken`, `invalid_time`, `date_past`, `booking_closed`, `unknown_service`, `invalid_phone`.
+Failure codes: `slot_taken`, `invalid_time`, `date_past`, `date_too_far`, `booking_closed`, `unknown_service`, `invalid_phone`.
+
+Bookings are taken up to 90 days ahead. A later date returns `date_too_far`. `booking_closed` is also returned if the shop's stored opening hours are invalid.
 
 ### find_booking
 
@@ -183,7 +187,7 @@ Failure codes: `not_found`, `invalid_phone`.
 }
 ```
 
-Failure codes: `consent_required`, `date_past`, `invalid_phone`, `unknown_service`.
+Failure codes: `consent_required`, `date_past`, `date_too_far`, `invalid_phone`, `unknown_service`.
 
 `consent` is optional to the server, but leaving it out returns `consent_required`, so it is required here.
 

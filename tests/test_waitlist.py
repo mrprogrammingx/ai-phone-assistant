@@ -766,7 +766,12 @@ def later(day_offset, hour=9, minute=0):
 
 
 def run_a_waitlist_write():
-    join(phone="+41790009999", date="2027-06-01")
+    # Thirty days after whatever the clock now says, so the date is always within the
+    # booking horizon. A refused join would never reach the retention code under test.
+    from app.timezone import today
+
+    result = join(phone="+41790009999", date=(today() + timedelta(days=30)).isoformat())
+    assert result["ok"] is True
 
 
 def entry_for(phone=PHONE):

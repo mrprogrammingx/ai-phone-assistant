@@ -24,6 +24,8 @@ from datetime import date, timedelta
 PLACEHOLDER_KEY = "replace-with-a-long-random-value"
 PROBE_RUNS = 5
 RACE_ROUNDS = 20
+# The same number as app/services/booking.py. This script imports nothing from the app.
+BOOKING_HORIZON_DAYS = 90
 RACE_REQUESTS_PER_APP = 6
 SERVICE = "classic-cut"
 # Some Cloudflare rules refuse the default Python client name.
@@ -198,7 +200,10 @@ def race(website, assistant, key):
         print(f"Cannot read the assistant app: status={status}", file=sys.stderr)
         return 1
 
-    first_day = date.fromisoformat(info["today"]) + timedelta(days=random.randrange(30, 300))
+    # Every round must stay inside the booking horizon, or it is refused as date_too_far.
+    first_day = date.fromisoformat(info["today"]) + timedelta(
+        days=random.randrange(30, BOOKING_HORIZON_DAYS - RACE_ROUNDS)
+    )
     total = RACE_REQUESTS_PER_APP * 2
     bad_rounds, other_statuses = [], {}
 

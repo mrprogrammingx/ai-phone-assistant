@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_assistant_key
 from app.database import get_db
 from app.models import QueueEntry, ShopStatus
+from app.schemas import CustomerName
 from app.services.booking import (
     BookingNotFound,
     BookingRejected,
@@ -51,7 +52,7 @@ def _reject_time_zone(value: dt.time) -> dt.time:
 
 
 LocalTime = Annotated[dt.time, AfterValidator(_reject_time_zone)]
-Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+Name = CustomerName  # the same rule as the website: trimmed, 1 to 100 characters, one line
 Phone = Annotated[str, StringConstraints(max_length=40)]
 
 

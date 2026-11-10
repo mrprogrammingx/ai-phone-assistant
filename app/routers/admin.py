@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -22,7 +22,8 @@ from app.schemas import (
 )
 from app.timezone import today
 
-# Staff can prepare the calendar this far ahead. Later dates are refused as typing mistakes.
+# Staff can prepare the calendar this far ahead. Later dates are refused as typing
+# mistakes. Customers can book only BOOKING_HORIZON_DAYS ahead, which is a separate rule.
 SLOT_CHANGE_HORIZON_DAYS = 366
 
 # Times staff may add to one day beyond opening hours.
@@ -34,7 +35,7 @@ def _require_changeable_date(day: date) -> None:
     current = today()
     if day < current:
         raise HTTPException(status_code=400, detail="That date is in the past")
-    if day > current + timedelta(days=SLOT_CHANGE_HORIZON_DAYS):
+    if (day - current).days > SLOT_CHANGE_HORIZON_DAYS:
         raise HTTPException(
             status_code=400,
             detail=f"That date is more than {SLOT_CHANGE_HORIZON_DAYS} days ahead",

@@ -16,3 +16,16 @@ export function errorMessage(detail, status) {
 
   return fallback;
 }
+
+// Validation errors keyed by the form field they belong to, so each can be shown
+// beside its input. Errors without a field are left to errorMessage.
+export function fieldErrors(detail) {
+  const fields = {};
+  if (!Array.isArray(detail)) return fields;
+  for (const item of detail) {
+    const field = Array.isArray(item?.loc) ? item.loc[item.loc.length - 1] : null;
+    if (typeof field !== "string" || typeof item?.msg !== "string" || !item.msg) continue;
+    if (!(field in fields)) fields[field] = item.msg.replace(/^Value error, /, "");
+  }
+  return fields;
+}

@@ -1,12 +1,14 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin
 from app.database import get_db
 from app.models import Customer, QueueEntry, QueueStatus
-from app.schemas import CheckInRequest, QueueEntryOut, QueueNoteUpdate, AvailableSlotOut, validate_phone
+from app.phone import InvalidPhone, normalize_phone
+from app.schemas import PHONE_MESSAGE, CheckInRequest, QueueEntryOut, QueueNoteUpdate, AvailableSlotOut, typed_phone
 from app.services.booking import (
     BookingRejected,
     book_slot,
@@ -32,13 +34,31 @@ def get_available_times(for_date: date | None = None, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail=rejected.message)
 
 
+def _checkin_phone(db: Session, typed: str) -> str:
+    """The number to book under: E.164, or the stored spelling of an earlier customer.
+
+    A number that cannot be normalised is refused, unless a customer saved before
+    numbers were normalised has exactly that string, so they can still book.
+    """
+    try:
+        return normalize_phone(typed)
+    except InvalidPhone:
+        if db.query(Customer.id).filter(Customer.phone == typed).first() is not None:
+            return typed
+    # The same shape as a schema error, so the form shows it beside the phone field.
+    raise RequestValidationError(
+        [{"type": "value_error", "loc": ("body", "phone"), "msg": f"Value error, {PHONE_MESSAGE}"}]
+    )
+
+
 @router.post("/checkin", response_model=QueueEntryOut)
 def check_in(payload: CheckInRequest, db: Session = Depends(get_db)):
     try:
         entry = book_slot(
             db,
             name=payload.name,
-            phone=payload.phone,
+            phone=_checkin_phone(db, payload.phone),
+            phone_as_typed=payload.phone,
             appointment_date=payload.appointment_date,
             appointment_time=payload.appointment_time,
             note=payload.note,
@@ -75,16 +95,26 @@ def list_queue(for_date: date | None = None, db: Session = Depends(get_db)):
 
 @router.get("/my-bookings", response_model=list[QueueEntryOut])
 def get_my_bookings(phone: str, for_date: date | None = None, db: Session = Depends(get_db)):
+    # Looks under the normalised number and under exactly what was typed, so a
+    # customer stored before numbers were normalised is still found.
     try:
-        phone = validate_phone(phone)
+        typed = typed_phone(phone)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    spellings = {typed}
+    try:
+        spellings.add(normalize_phone(typed))
+        is_valid = True
+    except InvalidPhone:
+        is_valid = False
 
-    customer = db.query(Customer).filter(Customer.phone == phone).first()
-    if customer is None:
+    customer_ids = [row[0] for row in db.query(Customer.id).filter(Customer.phone.in_(spellings))]
+    if not customer_ids:
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=PHONE_MESSAGE)
         return []
 
-    query = db.query(QueueEntry).filter(QueueEntry.customer_id == customer.id)
+    query = db.query(QueueEntry).filter(QueueEntry.customer_id.in_(customer_ids))
     if for_date is not None:
         query = query.filter(QueueEntry.queue_date == for_date)
 

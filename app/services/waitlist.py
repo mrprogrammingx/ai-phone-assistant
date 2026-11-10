@@ -56,8 +56,9 @@ def join_waitlist(
     """Adds a caller to the waitlist. An identical active request returns the existing entry."""
     if consent is not True:
         raise BookingRejected("consent_required", "We need permission to contact the caller first.")
-    if requested_date < today():
-        raise BookingRejected("date_past", booking.PAST_DATE_MESSAGE)
+    out_of_range = booking.date_rejection(requested_date)
+    if out_of_range is not None:
+        raise out_of_range
 
     booking.get_or_create_shop_status(db)
     try:

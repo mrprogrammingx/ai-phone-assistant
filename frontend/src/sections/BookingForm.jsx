@@ -3,16 +3,12 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Calendar, CheckCircle2, Clock, Loader2, PartyPopper } from "lucide-react";
 import { getAvailableTimes, checkIn } from "../lib/api";
 import DateCalendar from "../components/DateCalendar";
+import { lastBookableDate, nameProblem, noteProblem, phoneProblem } from "../lib/bookingRules";
 import { todayISO } from "../lib/format";
 import { formatDateLabelLong, formatTimeLabel } from "../lib/i18n/dateFormat";
 import { useLanguage } from "../lib/i18n/LanguageContext";
 
-// The same rule as validate_phone in app/schemas.py. The backend still decides.
-function isValidPhone(value) {
-  const phone = value.trim();
-  const digits = phone.replace(/\D/g, "").length;
-  return /^\+?[0-9\s\-()]{7,20}$/.test(phone) && digits >= 7;
-}
+const NO_ERRORS = { name: null, phone: null, note: null };
 
 export default function BookingForm() {
   const { t } = useLanguage();
@@ -25,8 +21,9 @@ export default function BookingForm() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
-  const [nameBlank, setNameBlank] = useState(false);
-  const [phoneInvalid, setPhoneInvalid] = useState(false);
+  // One message per field: from the checks below, or from the server's answer.
+  const [errors, setErrors] = useState(NO_ERRORS);
+  const clearError = (field) => setErrors((current) => ({ ...current, [field]: null }));
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -58,12 +55,15 @@ export default function BookingForm() {
     e.preventDefault();
     if (!selectedTime) return;
     setSubmitError(null);
-    // The same rules as app/schemas.py. The backend still decides.
-    const blank = name.trim() === "";
-    const invalid = !isValidPhone(phone);
-    setNameBlank(blank);
-    setPhoneInvalid(invalid);
-    if (blank || invalid) return;
+    // The same rules as the backend (see lib/bookingRules.js). The backend still decides.
+    const problems = { name: nameProblem(name), phone: phoneProblem(phone), note: noteProblem(note) };
+    const found = {
+      name: problems.name && t(problems.name),
+      phone: problems.phone && t(problems.phone),
+      note: problems.note && t(problems.note),
+    };
+    setErrors(found);
+    if (found.name || found.phone || found.note) return;
     setSubmitting(true);
 
     try {
@@ -76,7 +76,13 @@ export default function BookingForm() {
       });
       setConfirmation(entry);
     } catch (err) {
-      setSubmitError(err.message);
+      // A refusal about one field is shown beside that field, anything else above the button.
+      const { name: nameError, phone: phoneError, note: noteError } = err.fields || {};
+      if (nameError || phoneError || noteError) {
+        setErrors({ name: nameError || null, phone: phoneError || null, note: noteError || null });
+      } else {
+        setSubmitError(err.message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -88,6 +94,7 @@ export default function BookingForm() {
     setPhone("");
     setNote("");
     setSelectedTime(null);
+    setErrors(NO_ERRORS);
   }
 
   if (confirmation) {
@@ -125,7 +132,7 @@ export default function BookingForm() {
         <label className="eyebrow mb-3 flex items-center gap-2">
           <Calendar size={14} /> {t("bookingForm.chooseDate")}
         </label>
-        <DateCalendar value={date} onChange={setDate} minDate={todayISO()} />
+        <DateCalendar value={date} onChange={setDate} minDate={todayISO()} maxDate={lastBookableDate(todayISO())} />
 
         <label className="eyebrow mb-3 mt-8 flex items-center gap-2">
           <Clock size={14} /> {t("bookingForm.availableTimes")}
@@ -181,16 +188,16 @@ export default function BookingForm() {
             value={name}
             onChange={(e) => {
               setName(e.target.value);
-              setNameBlank(false);
+              clearError("name");
             }}
             placeholder={t("bookingForm.fullNamePlaceholder")}
-            aria-invalid={nameBlank}
-            aria-describedby={nameBlank ? "name-error" : undefined}
+            aria-invalid={Boolean(errors.name)}
+            aria-describedby={errors.name ? "name-error" : undefined}
             className="w-full rounded-lg border border-line bg-canvas px-4 py-3 text-content outline-none transition-colors focus:border-accent"
           />
-          {nameBlank && (
-            <p id="name-error" className="mt-2 text-sm text-red-700">
-              {t("bookingForm.blankName")}
+          {errors.name && (
+            <p id="name-error" role="alert" className="mt-2 text-sm text-red-700">
+              {errors.name}
             </p>
           )}
         </div>
@@ -206,16 +213,16 @@ export default function BookingForm() {
             value={phone}
             onChange={(e) => {
               setPhone(e.target.value);
-              setPhoneInvalid(false);
+              clearError("phone");
             }}
             placeholder={t("bookingForm.phonePlaceholder")}
-            aria-invalid={phoneInvalid}
-            aria-describedby={phoneInvalid ? "phone-error" : undefined}
+            aria-invalid={Boolean(errors.phone)}
+            aria-describedby={errors.phone ? "phone-error" : undefined}
             className="w-full rounded-lg border border-line bg-canvas px-4 py-3 text-content outline-none transition-colors focus:border-accent"
           />
-          {phoneInvalid && (
-            <p id="phone-error" className="mt-2 text-sm text-red-700">
-              {t("bookingForm.invalidPhone")}
+          {errors.phone && (
+            <p id="phone-error" role="alert" className="mt-2 text-sm text-red-700">
+              {errors.phone}
             </p>
           )}
         </div>
@@ -227,11 +234,21 @@ export default function BookingForm() {
           <textarea
             id="note"
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => {
+              setNote(e.target.value);
+              clearError("note");
+            }}
             placeholder={t("bookingForm.notePlaceholder")}
             rows={3}
+            aria-invalid={Boolean(errors.note)}
+            aria-describedby={errors.note ? "note-error" : undefined}
             className="w-full resize-none rounded-lg border border-line bg-canvas px-4 py-3 text-content outline-none transition-colors focus:border-accent"
           />
+          {errors.note && (
+            <p id="note-error" role="alert" className="mt-2 text-sm text-red-700">
+              {errors.note}
+            </p>
+          )}
         </div>
 
         <AnimatePresence>

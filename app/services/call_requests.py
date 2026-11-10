@@ -191,6 +191,8 @@ def _add_suggested_times(db: Session, request: CallRequest, service: dict | None
     start = max(request.requested_date, today())
     for offset in range(SUGGESTION_SEARCH_DAYS + 1):
         day = start + timedelta(days=offset)
+        if booking.date_rejection(day) is not None:
+            return  # the search has reached the booking horizon
         slots = booking.slot_availability(db, day, duration_minutes=service["duration_minutes"])
         free = [slot.time.strftime("%H:%M") for slot in slots if slot.available][:MAX_SUGGESTED_TIMES]
         if free:

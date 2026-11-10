@@ -1,7 +1,7 @@
 // Talks to the existing FastAPI booking backend (app/routers/queue.py).
 // In dev, Vite proxies /queue/* to http://localhost:8002 (see vite.config.js).
 // In production, set VITE_API_BASE_URL to the deployed API origin.
-import { errorMessage } from "./errorMessage";
+import { errorMessage, fieldErrors } from "./errorMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
@@ -19,7 +19,9 @@ async function request(path, options = {}) {
     } catch {
       // ignore non-JSON error bodies
     }
-    throw new Error(errorMessage(detail, res.status));
+    const error = new Error(errorMessage(detail, res.status));
+    error.fields = fieldErrors(detail);
+    throw error;
   }
 
   if (res.status === 204) return null;

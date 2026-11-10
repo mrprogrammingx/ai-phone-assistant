@@ -1,10 +1,12 @@
 import re
+import unicodedata
 from datetime import datetime, date, time
 from typing import Annotated, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
 from app.models import QueueStatus
+from app.phone import InvalidPhone, normalize_phone
 
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -34,40 +36,72 @@ def _whole_number(value, message: str):
     return value
 
 
-PHONE_PATTERN = re.compile(r"^\+?[0-9\s\-()]{7,20}$")
+MAX_NAME_LENGTH = 100
+MAX_NOTE_LENGTH = 500
+MAX_TYPED_PHONE_LENGTH = 40
+PHONE_MESSAGE = "Enter a valid phone number (at least 7 digits)"
+
+
+def _is_control(character: str) -> bool:
+    """Control characters and the Unicode line and paragraph separators."""
+    return unicodedata.category(character) in ("Cc", "Zl", "Zp")
+
+
+def _is_invisible(character: str) -> bool:
+    """Spaces, separators and every control or format character, such as a zero-width space."""
+    return unicodedata.category(character)[0] in ("C", "Z")
+
+
+def typed_phone(value: str) -> str:
+    """Tidies a number as typed. Whether it is a real number is decided by `normalize_phone`."""
+    value = value.strip()
+    if not value or len(value) > MAX_TYPED_PHONE_LENGTH or any(_is_control(char) for char in value):
+        raise ValueError(PHONE_MESSAGE)
+    return value
 
 
 def validate_phone(value: str) -> str:
-    value = value.strip()
-    digit_count = sum(char.isdigit() for char in value)
-    if not PHONE_PATTERN.match(value) or digit_count < 7:
-        raise ValueError("Enter a valid phone number (at least 7 digits)")
-    return value
+    """Returns the number in E.164, or raises ValueError with a message fit to show."""
+    try:
+        return normalize_phone(typed_phone(value))
+    except InvalidPhone:
+        raise ValueError(PHONE_MESSAGE) from None
 
 
 def validate_name(value: str) -> str:
     value = value.strip()
-    if not value:
+    if not value or all(_is_invisible(character) for character in value):
         raise ValueError("Enter your name")
+    if any(_is_control(character) for character in value):
+        raise ValueError("Name cannot contain line breaks or control characters")
+    if len(value) > MAX_NAME_LENGTH:
+        raise ValueError(f"Name must be at most {MAX_NAME_LENGTH} characters")
     return value
 
 
+def clean_note(value: Optional[str]) -> Optional[str]:
+    """Removes control characters but keeps line breaks. A note with nothing left is no note."""
+    if value is None:
+        return None
+    text = value.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
+    text = "".join(char for char in text if char == "\n" or not _is_control(char)).strip()
+    if len(text) > MAX_NOTE_LENGTH:
+        raise ValueError(f"Note must be at most {MAX_NOTE_LENGTH} characters")
+    return text or None
+
+
+CustomerName = Annotated[str, AfterValidator(validate_name)]
+Note = Annotated[Optional[str], AfterValidator(clean_note)]
+
+
 class CheckInRequest(BaseModel):
-    name: str
-    phone: str
+    name: CustomerName
+    # Kept as typed. The route normalises it, because a customer stored before numbers
+    # were normalised can only be found by the exact string.
+    phone: Annotated[str, AfterValidator(typed_phone)]
     appointment_date: date
-    appointment_time: time
-    note: Optional[str] = None
-
-    @field_validator("name")
-    @classmethod
-    def _validate_name(cls, value):
-        return validate_name(value)
-
-    @field_validator("phone")
-    @classmethod
-    def _validate_phone(cls, value):
-        return validate_phone(value)
+    appointment_time: MinuteTime
+    note: Note = None
 
 
 class CustomerOut(BaseModel):
@@ -106,7 +140,7 @@ class QueueStatusUpdate(BaseModel):
 
 
 class QueueNoteUpdate(BaseModel):
-    note: Optional[str] = None
+    note: Note = None
 
 
 class AvailableSlotOut(BaseModel):

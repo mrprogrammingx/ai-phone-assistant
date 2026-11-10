@@ -336,17 +336,31 @@ def test_cancel_frees_the_full_interval_and_rebooking_works():
 # Daylight saving
 
 
-@pytest.mark.parametrize("day", ["2027-03-28", "2027-10-31"], ids=["skipped-hour", "repeated-hour"])
-def test_interval_across_a_clock_change_is_refused(day, set_clock):
-    set_clock(datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc))
+# Each clock change is tested from a few weeks before it, so the date is inside the
+# booking horizon and a refusal can only come from the daylight-saving rule.
+CLOCK_CHANGES = [
+    ("2027-03-28", datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc)),
+    ("2027-10-31", datetime(2027, 10, 1, 9, 0, tzinfo=timezone.utc)),
+]
+
+
+@pytest.mark.parametrize("day, clock", CLOCK_CHANGES, ids=["skipped-hour", "repeated-hour"])
+def test_interval_across_a_clock_change_is_refused(day, clock, set_clock):
+    set_clock(clock)
     include_slot(time(1, 30), day=day)
 
-    assert_refused(phone_book("01:30", service=COMBO, day=day), "invalid_time")
+    result = phone_book("01:30", service=COMBO, day=day)
+
+    assert_refused(result, "invalid_time")
+    assert result["message"] == "That time is not available"
+    # The same slot is fine for an appointment that ends before the change, so the
+    # refusal above is the clock rule and nothing else.
+    assert phone_book("01:30", day=day)["ok"] is True
 
 
-@pytest.mark.parametrize("day", ["2027-03-28", "2027-10-31"], ids=["skipped-hour", "repeated-hour"])
-def test_interval_ending_exactly_at_a_clock_change_is_allowed(day, set_clock):
-    set_clock(datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc))
+@pytest.mark.parametrize("day, clock", CLOCK_CHANGES, ids=["skipped-hour", "repeated-hour"])
+def test_interval_ending_exactly_at_a_clock_change_is_allowed(day, clock, set_clock):
+    set_clock(clock)
     include_slot(time(1, 30), day=day)
 
     assert phone_book("01:30", day=day)["ok"] is True

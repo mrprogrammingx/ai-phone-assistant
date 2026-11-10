@@ -184,13 +184,15 @@ All JSON, all behind an API key. Method, headers and parameter types may still c
 | Tool and path | Request | Success | Failure codes | Status |
 |---|---|---|---|---|
 | `get_business_info` `/assistant/info` | none | today, weekday, now_local, timezone, open_days, open_time, close_time, services[id, name, price, currency CHF, duration_minutes, phone_bookable] | none | Built |
-| `check_availability` `/assistant/availability` | date, service_id, from?, to? | date, weekday, slots[] (at most 5), more | date_past, shop_closed, unknown_service | Built. Uses real service duration (Phase 2b, committed `faf771f`). |
-| `create_booking` `/assistant/bookings` | name, phone, date, time, service_id | created, booking{id, date, weekday, time, service} | slot_taken, invalid_time, date_past, booking_closed, unknown_service, invalid_phone | Built. Service stored in columns (Phase 2b, committed `faf771f`). |
+| `check_availability` `/assistant/availability` | date, service_id, from?, to? | date, weekday, slots[] (at most 5), more | date_past, date_too_far, shop_closed, unknown_service | Built. Uses real service duration (Phase 2b, committed `faf771f`). |
+| `create_booking` `/assistant/bookings` | name, phone, date, time, service_id | created, booking{id, date, weekday, time, service} | slot_taken, invalid_time, date_past, date_too_far, booking_closed, unknown_service, invalid_phone | Built. Service stored in columns (Phase 2b, committed `faf771f`). |
 | `find_booking` `/assistant/bookings/find` | phone, date? | bookings[] (upcoming, at most 3, no names) | invalid_phone | Built |
 | `cancel_booking` `/assistant/bookings/cancel` | phone, date, time | cancelled, already_cancelled | not_found, invalid_phone | Built. Frees the full interval (Phase 2b, committed `faf771f`). |
-| `join_waitlist` `/assistant/waitlist` | name, phone, service_id, date, from, to, consent | created, entry{id, date, from, to} | consent_required, date_past, invalid_phone, unknown_service | Built (Phase 3, committed `48d0b1b`). |
+| `join_waitlist` `/assistant/waitlist` | name, phone, service_id, date, from, to, consent | created, entry{id, date, from, to} | consent_required, date_past, date_too_far, invalid_phone, unknown_service | Built (Phase 3, committed `48d0b1b`). |
 | `accept_waitlist_offer` `/assistant/waitlist/accept` | phone, date, time | booking{...} | no_open_offer, offer_expired, slot_taken, invalid_phone | Built (Phase 3, committed `48d0b1b`). |
 | `reschedule_booking` `/assistant/bookings/reschedule` | phone, date, time, new_date, new_time | booking{...} | not_found, slot_taken, invalid_time, date_past | P1 |
+
+**Booking horizon.** Bookings, availability and the waitlist cover today and the next 90 days (`BOOKING_HORIZON_DAYS` in `app/services/booking.py`). A later date returns `date_too_far` on `check_availability`, `create_booking` and `join_waitlist`, and the website refuses it with the same message. The webhook records it as a follow-up with reason `date_too_far` and suggests no times. Names follow the website's rule: trimmed, 1 to 100 characters, no line breaks or control characters, otherwise `invalid_input`.
 
 **Removed:** `service_not_phone_bookable`. A service that cannot fit simply gets no slots. `phone_bookable` stays in `info` and is false only for a service longer than the whole opening day.
 

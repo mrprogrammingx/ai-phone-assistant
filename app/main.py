@@ -7,8 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
@@ -42,6 +43,18 @@ app.add_middleware(
     session_cookie="phone_assistant_session",
     https_only=session_https_only,
 )
+
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(_request: Request, error: RequestValidationError):
+    """FastAPI's usual 422 body, without `input`: what was typed is never sent back."""
+    detail = [
+        {"type": item.get("type", "value_error"), "loc": list(item.get("loc", ())), "msg": str(item.get("msg", ""))}
+        for item in error.errors()
+    ]
+    return JSONResponse({"detail": detail}, status_code=422)
+
 
 templates = Jinja2Templates(directory="app/templates")
 

@@ -12,6 +12,8 @@ from app.models import BlockedSlot, IncludedSlot, QueueEntry, QueueStatus, ShopS
 from app.services.booking import (
     SLOT_OCCUPYING_STATUSES,
     SLOT_RELEASING_STATUSES,
+    BookingRejected,
+    ensure_bookable,
     get_or_create_shop_status,
 )
 from tests.conftest import TEST_TODAY
@@ -240,23 +242,44 @@ def test_availability_and_booking_never_send_the_cancelled_status_to_the_databas
     assert "cancelled" not in everything_sent
 
 
-@pytest.mark.parametrize(
-    "day, slot",
-    [("2027-03-28", time(2, 30)), ("2027-10-31", time(2, 30))],
-    ids=["skipped-in-spring", "repeated-in-autumn"],
-)
-def test_local_times_broken_by_daylight_saving_are_refused(day, slot, set_clock):
-    set_clock(datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc))
-    add_row(IncludedSlot(included_date=date.fromisoformat(day), included_time=slot))
+# Each clock change is tested from a few weeks before it, so the date is inside the
+# booking horizon and a refusal can only come from the daylight-saving rule.
+CLOCK_CHANGES = [
+    ("2027-03-28", datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc)),
+    ("2027-10-31", datetime(2027, 10, 1, 9, 0, tzinfo=timezone.utc)),
+]
+
+
+def rejection_code(day, slot, minutes=30):
+    """The booking rule's own answer. The website shows only the message."""
+    with SessionLocal() as db:
+        status = get_or_create_shop_status(db)
+        try:
+            ensure_bookable(db, status, date.fromisoformat(day), slot, minutes)
+        except BookingRejected as rejected:
+            return rejected.code
+        finally:
+            db.rollback()
+    return None
+
+
+@pytest.mark.parametrize("day, clock", CLOCK_CHANGES, ids=["skipped-in-spring", "repeated-in-autumn"])
+def test_local_times_broken_by_daylight_saving_are_refused(day, clock, set_clock):
+    set_clock(clock)
+    add_row(IncludedSlot(included_date=date.fromisoformat(day), included_time=time(2, 30)))
 
     assert availability(day)["02:30:00"]["available"] is False
-    assert book("02:30:00", day=day).json() == {"detail": "That time is not available"}
+    assert rejection_code(day, time(2, 30)) == "invalid_time"
+    response = book("02:30:00", day=day)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "That time is not available"}
 
 
-@pytest.mark.parametrize("day", ["2027-03-28", "2027-10-31"])
-def test_normal_hours_work_on_daylight_saving_days(day, set_clock):
-    set_clock(datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc))
+@pytest.mark.parametrize("day, clock", CLOCK_CHANGES, ids=["spring", "autumn"])
+def test_normal_hours_work_on_daylight_saving_days(day, clock, set_clock):
+    set_clock(clock)
 
+    assert rejection_code(day, time(9, 0)) is None
     assert availability(day)["09:00:00"]["available"] is True
     assert book("09:00:00", day=day).status_code == 200
 

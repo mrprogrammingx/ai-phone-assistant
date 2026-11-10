@@ -13,12 +13,13 @@ function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export default function DateCalendar({ value, onChange, minDate }) {
+export default function DateCalendar({ value, onChange, minDate, maxDate }) {
   const { t } = useLanguage();
   const weekdayLabels = weekdayNarrowLabels();
 
   const selected = parseISO(value);
   const min = minDate ? parseISO(minDate) : startOfDay(new Date());
+  const max = maxDate ? parseISO(maxDate) : null;
   const [viewDate, setViewDate] = useState(new Date(selected.getFullYear(), selected.getMonth(), 1));
 
   const today = startOfDay(new Date());
@@ -33,6 +34,7 @@ export default function DateCalendar({ value, onChange, minDate }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
 
   const canGoPrev = new Date(year, month, 0) >= startOfDay(min);
+  const canGoNext = !max || new Date(year, month + 1, 1) <= max;
 
   return (
     <div className="rounded-lg border border-line bg-canvas p-4">
@@ -51,9 +53,10 @@ export default function DateCalendar({ value, onChange, minDate }) {
         </span>
         <button
           type="button"
-          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          onClick={() => canGoNext && setViewDate(new Date(year, month + 1, 1))}
+          disabled={!canGoNext}
           aria-label={t("picker.nextMonth")}
-          className="touch-manipulation rounded-md p-1 text-content/70 transition-colors hover:text-accent"
+          className="touch-manipulation rounded-md p-1 text-content/70 transition-colors hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
         >
           <ChevronRight size={18} />
         </button>
@@ -69,7 +72,7 @@ export default function DateCalendar({ value, onChange, minDate }) {
         {cells.map((day, i) => {
           if (!day) return <span key={`empty-${i}`} />;
 
-          const isPast = day < startOfDay(min);
+          const isPast = day < startOfDay(min) || (max !== null && day > max);
           const isSelected = sameDay(day, selected);
           const isToday = sameDay(day, today);
 

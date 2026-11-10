@@ -27,7 +27,7 @@ def test_checkin_and_position():
         "/queue/checkin",
         json={
             "name": "Alice",
-            "phone": "555-0100",
+            "phone": "+41790000100",
             "appointment_date": TODAY,
             "appointment_time": _first_available_slot(),
         },
@@ -49,7 +49,7 @@ def test_call_next_as_admin():
         "/queue/checkin",
         json={
             "name": "Bob",
-            "phone": "555-0101",
+            "phone": "+41790000101",
             "appointment_date": TODAY,
             "appointment_time": _first_available_slot(),
         },
