@@ -90,10 +90,11 @@ def build_feed(db: Session) -> str:
     current_day = today()
     rows = _appointments(db, current_day - timedelta(days=DAYS_BEHIND), current_day + timedelta(days=DAYS_AHEAD))
     # Read directly: the usual settings helper creates the row, and the feed never writes.
-    slot_minutes = (
+    stored_minutes = (
         db.query(ShopStatus.slot_duration_minutes).filter(ShopStatus.id == SHOP_STATUS_ID).scalar()
-        or FALLBACK_SLOT_MINUTES
     )
+    # A stored zero or negative length must not produce events that end before they start.
+    slot_minutes = stored_minutes if stored_minutes and stored_minutes > 0 else FALLBACK_SLOT_MINUTES
 
     lines = [
         "BEGIN:VCALENDAR",

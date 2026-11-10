@@ -1,4 +1,5 @@
 """The one place that decides which slots can be booked, and books them."""
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -33,6 +34,14 @@ SLOT_RELEASING_STATUSES = (QueueStatus.no_show, QueueStatus.cancelled)
 NOT_STARTED_STATUSES = (QueueStatus.waiting, QueueStatus.next)
 
 PAST_DATE_MESSAGE = "Cannot book a date in the past"
+INVALID_SCHEDULE_MESSAGE = "Booking is not available at the moment"
+
+# A full day of the shortest slot staff can set (24 hours of 5 minutes). The slot
+# generator never produces more, whatever is stored.
+MAX_SLOTS_PER_DAY = 288
+
+logger = logging.getLogger("phone_assistant.booking")
+_warned_schedule_problems: set[str] = set()
 
 
 class BookingRejected(Exception):
@@ -114,19 +123,60 @@ def _peak_occupancy(occupied: list[tuple[datetime, datetime]], start: datetime, 
     return max(sum(begins <= moment < ends for begins, ends in overlapping) for moment in moments)
 
 
+def _minute_of_day(value: time) -> int:
+    return value.hour * 60 + value.minute
+
+
+def _schedule_problem(shop_status: ShopStatus) -> str | None:
+    """Why the stored settings cannot produce a day of slots, or None if they can.
+
+    The settings form refuses these values, but an old database or a manual edit can
+    still hold them. Nothing here may loop, so every check is plain arithmetic.
+    """
+    minutes = shop_status.slot_duration_minutes
+    capacity = shop_status.capacity_per_slot
+    opens, closes = shop_status.open_time, shop_status.close_time
+
+    if not isinstance(minutes, int) or minutes <= 0:
+        return "slot length is not a positive number of minutes"
+    if not isinstance(capacity, int) or capacity <= 0:
+        return "capacity is not a positive number"
+    if opens is None or closes is None or opens >= closes:
+        return "opening time is not before closing time"
+    slot_count = -(-(_minute_of_day(closes) - _minute_of_day(opens)) // minutes)
+    if slot_count > MAX_SLOTS_PER_DAY:
+        return f"the day would hold more than {MAX_SLOTS_PER_DAY} slots"
+    return None
+
+
+def _schedule_is_usable(shop_status: ShopStatus) -> bool:
+    """False if the stored settings are invalid. Warns once per problem, never per request."""
+    problem = _schedule_problem(shop_status)
+    if problem is None:
+        return True
+    if problem not in _warned_schedule_problems:
+        _warned_schedule_problems.add(problem)
+        logger.warning(
+            "invalid schedule settings: %s. Every day is treated as closed until staff "
+            "save valid opening hours, slot length and capacity.",
+            problem,
+        )
+    return False
+
+
 def _base_slots(shop_status: ShopStatus, queue_date: date) -> set[time]:
+    if not _schedule_is_usable(shop_status):
+        return set()
     open_days = set(shop_status.open_days.split(",")) if shop_status.open_days else set()
     if WEEKDAY_CODES[queue_date.weekday()] not in open_days:
         return set()
 
-    slots = set()
-    cursor = datetime.combine(queue_date, shop_status.open_time)
-    end = datetime.combine(queue_date, shop_status.close_time)
-    step = timedelta(minutes=shop_status.slot_duration_minutes)
-    while cursor < end:
-        slots.add(cursor.time())
-        cursor += step
-    return slots
+    opens = datetime.combine(queue_date, shop_status.open_time)
+    span = _minute_of_day(shop_status.close_time) - _minute_of_day(shop_status.open_time)
+    minutes = shop_status.slot_duration_minutes
+    # A counted loop: the number of steps is known and capped before it starts.
+    slot_count = min(-(-span // minutes), MAX_SLOTS_PER_DAY)
+    return {(opens + timedelta(minutes=index * minutes)).time() for index in range(slot_count)}
 
 
 def _load_day(db: Session, shop_status: ShopStatus, queue_date: date) -> _DaySchedule:
@@ -172,6 +222,8 @@ def _rejection(day: _DaySchedule, slot: time, minutes: int) -> BookingRejected |
 
     if day.queue_date < current.date():
         return BookingRejected("date_past", PAST_DATE_MESSAGE)
+    if not _schedule_is_usable(day.shop_status):
+        return BookingRejected("booking_closed", INVALID_SCHEDULE_MESSAGE)
     if is_today and not day.shop_status.booking_open:
         return BookingRejected("booking_closed", "Booking is currently closed for today")
     if slot not in day.base_times and slot not in day.included_times:
@@ -201,6 +253,8 @@ def slot_availability(
         raise BookingRejected("date_past", PAST_DATE_MESSAGE)
 
     shop_status = get_or_create_shop_status(db)
+    if not _schedule_is_usable(shop_status):
+        return []  # closed, including any times staff added for this day
     minutes = duration_minutes or shop_status.slot_duration_minutes
     day = _load_day(db, shop_status, queue_date)
     return [
@@ -214,6 +268,11 @@ def slot_availability(
         )
         for slot in day.slot_times
     ]
+
+
+def day_slot_times(db: Session, queue_date: date) -> list[time]:
+    """Every start time that exists on this day: the opening-hours grid plus added times."""
+    return _load_day(db, get_or_create_shop_status(db), queue_date).slot_times
 
 
 def acquire_booking_lock(db: Session) -> None:

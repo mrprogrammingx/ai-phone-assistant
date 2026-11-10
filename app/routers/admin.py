@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin
 from app.database import get_db
 from app.models import QueueEntry, QueueStatus, BlockedSlot, IncludedSlot
+from app.services.booking import day_slot_times
 from app.services.booking import get_or_create_shop_status as _get_or_create_shop_status
 from app.schemas import (
     ShopStatusOut,
@@ -20,6 +21,25 @@ from app.schemas import (
     NotificationEmailsUpdate,
 )
 from app.timezone import today
+
+# Staff can prepare the calendar this far ahead. Later dates are refused as typing mistakes.
+SLOT_CHANGE_HORIZON_DAYS = 366
+
+# Times staff may add to one day beyond opening hours.
+MAX_INCLUDED_SLOTS_PER_DAY = 48
+
+
+def _require_changeable_date(day: date) -> None:
+    """Applies only to new rows. Rows already stored can always be listed and removed."""
+    current = today()
+    if day < current:
+        raise HTTPException(status_code=400, detail="That date is in the past")
+    if day > current + timedelta(days=SLOT_CHANGE_HORIZON_DAYS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"That date is more than {SLOT_CHANGE_HORIZON_DAYS} days ahead",
+        )
+
 
 # Public: read-only shop status is needed on every page (banner) and by the
 # public check-in page, so it is not behind admin auth.
@@ -93,6 +113,12 @@ def block_slot(payload: BlockedSlotRequest, db: Session = Depends(get_db)):
     if existing is not None:
         return existing
 
+    _require_changeable_date(payload.date)
+    if payload.time not in day_slot_times(db, payload.date):
+        raise HTTPException(
+            status_code=400, detail="That time is not one of that day's appointment times"
+        )
+
     blocked = BlockedSlot(blocked_date=payload.date, blocked_time=payload.time)
     db.add(blocked)
     try:
@@ -138,6 +164,14 @@ def include_slot(payload: IncludedSlotRequest, db: Session = Depends(get_db)):
     )
     if existing is not None:
         return existing
+
+    _require_changeable_date(payload.date)
+    already_added = db.query(IncludedSlot).filter(IncludedSlot.included_date == payload.date).count()
+    if already_added >= MAX_INCLUDED_SLOTS_PER_DAY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No more than {MAX_INCLUDED_SLOTS_PER_DAY} extra times can be added to one day",
+        )
 
     included = IncludedSlot(included_date=payload.date, included_time=payload.time)
     db.add(included)

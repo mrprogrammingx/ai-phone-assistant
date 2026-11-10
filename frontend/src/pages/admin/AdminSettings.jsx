@@ -41,6 +41,10 @@ export default function AdminSettings() {
   const [schedule, setSchedule] = useState({ open_time: "", close_time: "", slot_duration_minutes: 30, capacity_per_slot: 1 });
   const [emailsText, setEmailsText] = useState("");
   const [emailsMessage, setEmailsMessage] = useState("");
+  // The server's refusal, shown under the form it belongs to.
+  const [daysError, setDaysError] = useState("");
+  const [scheduleError, setScheduleError] = useState("");
+  const [slotsError, setSlotsError] = useState("");
   const [blockDate, setBlockDate] = useState(todayIso());
   const [slots, setSlots] = useState([]);
   const [newTime, setNewTime] = useState("09:00");
@@ -97,19 +101,30 @@ export default function AdminSettings() {
 
   async function saveOpenDays(e) {
     e.preventDefault();
-    await setOpenDays(openDays);
-    toast(t("admin.settings.daysOpenSaved"));
+    setDaysError("");
+    try {
+      await setOpenDays(openDays);
+      toast(t("admin.settings.daysOpenSaved"));
+    } catch (err) {
+      setDaysError(err.message);
+    }
   }
 
   async function saveSchedule(e) {
     e.preventDefault();
-    await setScheduleSettings({
-      open_time: schedule.open_time,
-      close_time: schedule.close_time,
-      slot_duration_minutes: Number(schedule.slot_duration_minutes),
-      capacity_per_slot: Number(schedule.capacity_per_slot),
-    });
-    toast(t("admin.settings.slotSettingsSaved"));
+    setScheduleError("");
+    try {
+      await setScheduleSettings({
+        open_time: schedule.open_time,
+        close_time: schedule.close_time,
+        slot_duration_minutes: Number(schedule.slot_duration_minutes),
+        capacity_per_slot: Number(schedule.capacity_per_slot),
+      });
+      toast(t("admin.settings.slotSettingsSaved"));
+      refreshSlots();
+    } catch (err) {
+      setScheduleError(err.message);
+    }
   }
 
   async function saveEmails(e) {
@@ -127,12 +142,17 @@ export default function AdminSettings() {
   }
 
   async function handleSlotClick(slot) {
-    if (slot.included) {
-      await removeIncludedSlot(blockDate, slot.time);
-    } else if (slot.blocked) {
-      await unblockSlot(blockDate, slot.time);
-    } else {
-      await blockSlot(blockDate, slot.time);
+    setSlotsError("");
+    try {
+      if (slot.included) {
+        await removeIncludedSlot(blockDate, slot.time);
+      } else if (slot.blocked) {
+        await unblockSlot(blockDate, slot.time);
+      } else {
+        await blockSlot(blockDate, slot.time);
+      }
+    } catch (err) {
+      setSlotsError(err.message);
     }
     refreshSlots();
   }
@@ -140,7 +160,12 @@ export default function AdminSettings() {
   async function addExtraTime(e) {
     e.preventDefault();
     if (!newTime) return;
-    await addIncludedSlot(blockDate, newTime);
+    setSlotsError("");
+    try {
+      await addIncludedSlot(blockDate, newTime);
+    } catch (err) {
+      setSlotsError(err.message);
+    }
     refreshSlots();
   }
 
@@ -191,6 +216,11 @@ export default function AdminSettings() {
               {t("admin.settings.saveDaysOpen")}
             </button>
           </div>
+          {daysError && (
+            <p role="alert" className="text-sm text-red-700">
+              {daysError}
+            </p>
+          )}
         </form>
       </Card>
 
@@ -217,6 +247,7 @@ export default function AdminSettings() {
             <input
               type="number"
               min="5"
+              max="240"
               step="5"
               required
               value={schedule.slot_duration_minutes}
@@ -229,6 +260,7 @@ export default function AdminSettings() {
             <input
               type="number"
               min="1"
+              max="20"
               step="1"
               required
               value={schedule.capacity_per_slot}
@@ -240,6 +272,11 @@ export default function AdminSettings() {
             {t("admin.settings.saveSlotSettings")}
           </button>
         </form>
+        {scheduleError && (
+          <p role="alert" className="mt-3 text-sm text-red-700">
+            {scheduleError}
+          </p>
+        )}
       </Card>
 
       <Card title={t("admin.settings.notificationEmails")}>
@@ -291,6 +328,11 @@ export default function AdminSettings() {
             {t("admin.settings.addExtraTime")}
           </button>
         </form>
+        {slotsError && (
+          <p role="alert" className="mt-3 text-sm text-red-700">
+            {slotsError}
+          </p>
+        )}
       </Card>
     </div>
   );
