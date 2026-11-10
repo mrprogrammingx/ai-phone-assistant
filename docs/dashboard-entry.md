@@ -38,7 +38,7 @@ No parameters.
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `date` | String | Required. Date as YYYY-MM-DD, shop-local. |
-| `service_id` | String | Required. A service id from get_business_info. |
+| `service_id` | String | Required. The exact id text from get_business_info, for example classic-cut. Never a number. |
 | `from` | String | Optional. Earliest start time as HH:MM. Leave empty if the caller named none. |
 | `to` | String | Optional. Latest start time as HH:MM. Leave empty if the caller named none. |
 
@@ -56,7 +56,7 @@ No parameters.
 | `phone` | String | Required. The caller's phone number, as read back to them. Keep any leading + or 0. |
 | `date` | String | Required. Date as YYYY-MM-DD, shop-local. |
 | `time` | String | Required. Start time as HH:MM, from check_availability. |
-| `service_id` | String | Required. A service id from get_business_info. |
+| `service_id` | String | Required. The exact id text from get_business_info, for example classic-cut. Never a number. |
 
 ## `find_booking`
 
@@ -97,7 +97,7 @@ No parameters.
 | --- | --- | --- |
 | `name` | String | Required. The caller's name. |
 | `phone` | String | Required. The caller's phone number, as read back to them. Keep any leading + or 0. |
-| `service_id` | String | Required. A service id from get_business_info. |
+| `service_id` | String | Required. The exact id text from get_business_info, for example classic-cut. Never a number. |
 | `date` | String | Required. Date as YYYY-MM-DD, shop-local. |
 | `from` | String | Required. Earliest acceptable start time as HH:MM. |
 | `to` | String | Required. Latest acceptable start time as HH:MM. |
