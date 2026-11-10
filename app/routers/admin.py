@@ -1,15 +1,16 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import is_admin, require_admin
 from app.database import get_db
 from app.models import QueueEntry, QueueStatus, BlockedSlot, IncludedSlot
 from app.services.booking import BOOKING_HORIZON_DAYS, day_slot_times
 from app.services.booking import get_or_create_shop_status as _get_or_create_shop_status
 from app.schemas import (
+    PublicShopStatusOut,
     ShopStatusOut,
     ShopStatusUpdate,
     OpenDaysUpdate,
@@ -40,17 +41,21 @@ def _require_changeable_date(day: date) -> None:
         )
 
 
-# Public: read-only shop status is needed on every page (banner) and by the
-# public check-in page, so it is not behind admin auth.
+# Public: opening hours are needed on every page (banner) and by the public check-in
+# page, so this route is not behind admin auth. It answers with the staff-only
+# fields only when the request carries an admin session.
 public_router = APIRouter(prefix="/admin", tags=["admin"])
 
 # Everything else under /admin is staff-only configuration.
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
-@public_router.get("/shop-status", response_model=ShopStatusOut)
-def get_shop_status(db: Session = Depends(get_db)):
-    return _get_or_create_shop_status(db)
+@public_router.get("/shop-status", response_model=PublicShopStatusOut | ShopStatusOut)
+def get_shop_status(request: Request, db: Session = Depends(get_db)):
+    status = _get_or_create_shop_status(db)
+    if is_admin(request):
+        return ShopStatusOut.model_validate(status)
+    return PublicShopStatusOut.model_validate(status)
 
 
 @router.post("/shop-status", response_model=ShopStatusOut)

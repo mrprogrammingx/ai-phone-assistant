@@ -9,7 +9,15 @@ from app.auth import require_admin
 from app.database import get_db
 from app.models import Customer, QueueEntry, QueueStatus
 from app.phone import InvalidPhone, normalize_phone
-from app.schemas import PHONE_MESSAGE, CheckInRequest, QueueEntryOut, QueueNoteUpdate, AvailableSlotOut, typed_phone
+from app.schemas import (
+    PHONE_MESSAGE,
+    AvailableSlotOut,
+    CheckInRequest,
+    MyBookingOut,
+    QueueEntryOut,
+    QueueNoteUpdate,
+    typed_phone,
+)
 from app.services.booking import (
     BookingRejected,
     book_slot,
@@ -97,7 +105,7 @@ def list_queue(for_date: date | None = None, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/my-bookings", response_model=list[QueueEntryOut])
+@router.get("/my-bookings", response_model=list[MyBookingOut])
 def get_my_bookings(phone: str, for_date: date | None = None, db: Session = Depends(get_db)):
     # Looks under the normalised number and under exactly what was typed, so a
     # customer stored before numbers were normalised is still found.

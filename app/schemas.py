@@ -135,6 +135,22 @@ class QueueEntryOut(BaseModel):
     customer: CustomerOut
 
 
+class MyBookingOut(BaseModel):
+    """A booking as shown to whoever typed its phone number: when, never who.
+
+    Knowing a phone number is not proof of identity, so the name and the note stay out.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    queue_date: date
+    position: int
+    status: QueueStatus
+    appointment_time: time
+    created_at: datetime
+
+
 class QueueStatusUpdate(BaseModel):
     status: QueueStatus
 
@@ -178,7 +194,9 @@ class IncludedSlotOut(BaseModel):
     included_time: time
 
 
-class ShopStatusOut(BaseModel):
+class PublicShopStatusOut(BaseModel):
+    """What anyone may read: when the shop is open and how its day is divided."""
+
     model_config = ConfigDict(from_attributes=True)
 
     booking_open: bool
@@ -187,7 +205,6 @@ class ShopStatusOut(BaseModel):
     close_time: time
     slot_duration_minutes: int
     capacity_per_slot: int
-    notification_emails: list[str]
 
     @field_validator("open_days", mode="before")
     @classmethod
@@ -195,6 +212,12 @@ class ShopStatusOut(BaseModel):
         if isinstance(value, str):
             return [day for day in value.split(",") if day]
         return value
+
+
+class ShopStatusOut(PublicShopStatusOut):
+    """The public fields plus the staff-only ones. Only for a logged-in admin."""
+
+    notification_emails: list[str]
 
     @field_validator("notification_emails", mode="before")
     @classmethod
