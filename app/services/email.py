@@ -17,7 +17,8 @@ SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 def send_email(to_email: str, subject: str, body: str) -> bool:
     """Send an email via Resend or SendGrid. Returns True on success (or dry-run)."""
     if EMAIL_DRY_RUN:
-        logger.info("[DRY RUN] Email to %s | subject=%r | body=%r", to_email, subject, body)
+        # The body holds the customer's name, phone and note, so only its size is logged.
+        logger.info("[DRY RUN] Email not sent | subject=%r | body_chars=%d", subject, len(body))
         return True
 
     try:
@@ -28,8 +29,9 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         else:
             logger.error("Unknown EMAIL_PROVIDER: %s", EMAIL_PROVIDER)
             return False
-    except httpx.HTTPError:
-        logger.exception("Failed to send email to %s", to_email)
+    except httpx.HTTPError as error:
+        # No address and no traceback: the provider's error text can repeat the request.
+        logger.error("Failed to send an email | provider=%s | error=%s", EMAIL_PROVIDER, type(error).__name__)
         return False
 
 

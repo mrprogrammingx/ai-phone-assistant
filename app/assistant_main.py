@@ -14,12 +14,14 @@ load_dotenv()
 
 from fastapi import FastAPI, Request
 
+from app.access_log import hide_query_strings
 from app.database import Base, engine
 from app.routers import assistant, webhook
 from app.schema_check import require_current_schema
 
 Base.metadata.create_all(bind=engine)
 require_current_schema(engine)
+hide_query_strings()
 
 logger = logging.getLogger("barbershop.assistant")
 logger.setLevel(logging.INFO)

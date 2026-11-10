@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.access_log import hide_query_strings
 from app.auth import is_admin, verify_credentials
 from app.database import Base, engine
 from app.routers import queue, admin, customers
@@ -21,6 +22,9 @@ from app.schema_check import require_current_schema
 
 Base.metadata.create_all(bind=engine)
 require_current_schema(engine)
+
+
+hide_query_strings()
 
 app = FastAPI(title="Demo Barbershop")
 
