@@ -131,9 +131,18 @@ single-server mode — no `CORS_ORIGINS` change needed for this either.
 
 ## Tests
 
+The tests need one extra package, Hypothesis, which the apps themselves do not use:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ```bash
 pytest
 ```
+
+The property tests in `tests/test_properties.py` try the same generated inputs on every run.
+Without Hypothesis installed that one file is skipped and the rest still runs.
 
 ## Public rehearsal
 

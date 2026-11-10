@@ -6,7 +6,7 @@ from typing import Annotated, Optional
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
 from app.models import QueueStatus
-from app.phone import InvalidPhone, normalize_phone
+from app.phone import MAX_TYPED_PHONE_LENGTH, InvalidPhone, normalize_phone
 
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -38,7 +38,6 @@ def _whole_number(value, message: str):
 
 MAX_NAME_LENGTH = 100
 MAX_NOTE_LENGTH = 500
-MAX_TYPED_PHONE_LENGTH = 40
 PHONE_MESSAGE = "Enter a valid phone number (at least 7 digits)"
 
 

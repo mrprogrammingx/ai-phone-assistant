@@ -194,6 +194,8 @@ All JSON, all behind an API key. Method, headers and parameter types may still c
 
 **Booking horizon.** Bookings, availability and the waitlist cover today and the next 90 days (`BOOKING_HORIZON_DAYS` in `app/services/booking.py`). A later date returns `date_too_far` on `check_availability`, `create_booking` and `join_waitlist`, and the website refuses it with the same message. The webhook records it as a follow-up with reason `date_too_far` and suggests no times. Staff are held to the same 90 days when they block or add a time, because the settings page cannot show later days. Names follow the website's rule: trimmed, 1 to 100 characters, no line breaks or control characters, otherwise `invalid_input`.
 
+**Phone numbers.** One function, `normalize_phone` in `app/phone.py`, decides what is a valid number for the website, every tool and the webhook. Space around a number is ignored. A line break, tab or other control character inside it, or more than 40 characters, returns `invalid_phone`.
+
 **Removed:** `service_not_phone_bookable`. A service that cannot fit simply gets no slots. `phone_bookable` stays in `info` and is false only for a service longer than the whole opening day.
 
 **Waitlist behaviour.** `join_waitlist` returns `created: false` with the existing entry for an identical request, and still requires consent. `from` and `to` bound the appointment's start time. `accept_waitlist_offer` returns `booking{...}`. Repeating it returns the same booking only while that booking is active. `slot_taken` means someone else took the time, and `offer_expired` covers both the 30 minutes and a slot start that has passed.

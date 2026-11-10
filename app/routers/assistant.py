@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints, field_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -54,7 +54,8 @@ def _reject_time_zone(value: dt.time) -> dt.time:
 
 LocalTime = Annotated[dt.time, AfterValidator(_reject_time_zone)]
 Name = CustomerName  # the same rule as the website: trimmed, 1 to 100 characters, one line
-Phone = Annotated[str, StringConstraints(max_length=40)]
+# Any text: `normalize_phone` alone decides what is a valid number, as it does on the website.
+Phone = str
 
 
 class _BlankOptionalsAreMissing(BaseModel):

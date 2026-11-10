@@ -697,3 +697,23 @@ def test_the_old_checkin_page_has_no_phone_pattern_of_its_own():
     assert page.status_code == 200
     assert "pattern=" not in page.text
     assert 'type="tel"' in page.text
+
+
+@pytest.mark.parametrize("typed", ["079\n1234567", "001000000\r0", "079\t123 45 67", "079 123 45 67", "0791234567\x00"])
+def test_a_control_character_inside_a_number_is_refused_everywhere(typed):
+    """Found by the property tests: the assistant and the webhook used to accept these."""
+    from app.services.call_requests import _normalized, parse_call_completed
+
+    assert checkin(phone=typed).status_code == 422
+    assert tool("bookings/find", phone=typed)["code"] == "invalid_phone"
+    assert tool("bookings", name="Test Customer", phone=typed, date=TOMORROW, time="10:00",
+                service_id="classic-cut")["code"] == "invalid_phone"
+    assert _normalized(parse_call_completed({"extracted": {"phone": typed}}).phone) is None
+    assert_nothing_booked()
+
+
+def test_space_around_a_number_is_ignored_everywhere():
+    typed = "\n  079 123 45 67 \t"
+
+    assert checkin(phone=typed).json()["customer"]["phone"] == PHONE
+    assert tool("bookings/find", phone=typed)["ok"] is True

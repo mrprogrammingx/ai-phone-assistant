@@ -1,0 +1,3 @@
+# Tools for running the tests. Not needed to run the apps.
+-r requirements.txt
+hypothesis==6.170.15
