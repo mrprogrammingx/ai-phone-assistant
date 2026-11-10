@@ -14,7 +14,7 @@
 
   <form id="checkin-form">
     <input type="text" name="name" placeholder="Full name" required>
-    <input type="tel" name="phone" placeholder="Phone" pattern="^\+?[0-9\s\-()]{7,20}$" title="Enter a valid phone number (at least 7 digits)" required>
+    <input type="tel" name="phone" placeholder="Phone" maxlength="40" required>
     <input type="text" name="note" placeholder="Note (optional, e.g. requested style)">
     <button type="submit" id="submit-btn" disabled>Check In</button>
   </form>
@@ -22,7 +22,7 @@
 
   <h2>My Bookings</h2>
   <form id="my-bookings-form">
-    <input type="tel" id="my-bookings-phone" placeholder="Your phone" pattern="^\+?[0-9\s\-()]{7,20}$" title="Enter a valid phone number (at least 7 digits)" required>
+    <input type="tel" id="my-bookings-phone" placeholder="Your phone" maxlength="40" required>
     <button type="submit">Look Up</button>
   </form>
   <div id="my-bookings-filter" style="display: none;">

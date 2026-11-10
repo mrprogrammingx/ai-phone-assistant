@@ -689,3 +689,11 @@ def test_the_assistant_does_not_send_back_invalid_json():
     assert response.status_code == 200
     assert response.json()["code"] == "invalid_input"
     assert "Quartzwhistle" not in response.text
+
+
+def test_the_old_checkin_page_has_no_phone_pattern_of_its_own():
+    page = client.get("/checkin")
+
+    assert page.status_code == 200
+    assert "pattern=" not in page.text
+    assert 'type="tel"' in page.text

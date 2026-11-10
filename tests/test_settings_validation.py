@@ -450,8 +450,9 @@ def slot_rows(model) -> int:
     [
         ("2026-11-30", "past"),
         ("0001-01-01", "past"),
-        ("2027-12-03", "more than"),
-        ("2999-01-01", "more than"),
+        ("2027-03-02", "more than 90 days ahead"),
+        ("2027-12-03", "more than 90 days ahead"),
+        ("2999-01-01", "more than 90 days ahead"),
     ],
 )
 def test_slots_cannot_be_changed_on_absurd_dates(admin, path, model, day, expected_text):
@@ -459,6 +460,21 @@ def test_slots_cannot_be_changed_on_absurd_dates(admin, path, model, day, expect
 
     assert_refused(response, expected_text, status_code=400)
     assert slot_rows(model) == 0
+
+
+@pytest.mark.parametrize("path, model", [("blocked-slots", BlockedSlot), ("included-slots", IncludedSlot)])
+def test_slots_can_be_changed_up_to_the_last_bookable_day(admin, path, model):
+    from app.services.booking import BOOKING_HORIZON_DAYS
+
+    assert BOOKING_HORIZON_DAYS == 90
+    last_day = "2027-03-01"  # 90 days after the test clock's today
+
+    response = admin.post(f"/admin/{path}", json={"date": last_day, "time": "10:00"})
+
+    assert response.status_code == 200, response.text
+    assert slot_rows(model) == 1
+    # Staff can see what they changed: the same day is readable on the settings page.
+    assert admin.get(f"/queue/available-times?for_date={last_day}").status_code == 200
 
 
 @pytest.mark.parametrize("path, model", [("blocked-slots", BlockedSlot), ("included-slots", IncludedSlot)])

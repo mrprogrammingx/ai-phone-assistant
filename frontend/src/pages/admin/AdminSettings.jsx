@@ -16,6 +16,7 @@ import { Card, Toggle, buttonClass, buttonOutlineClass, inputClass } from "../..
 import DatePickerField from "../../components/admin/DatePickerField";
 import TimePickerField from "../../components/admin/TimePickerField";
 import { useAdminUI } from "../../components/admin/AdminUIContext";
+import { lastBookableDate } from "../../lib/bookingRules";
 import { useLanguage } from "../../lib/i18n/LanguageContext";
 
 function todayIso() {
@@ -299,7 +300,7 @@ export default function AdminSettings() {
       <Card title={t("admin.settings.manageTimeSlots")}>
         <div className="mb-3 flex items-center gap-2 text-sm text-content/70">
           <span>{t("admin.field.date")}</span>
-          <DatePickerField value={blockDate} minDate={todayIso()} onChange={setBlockDate} />
+          <DatePickerField value={blockDate} minDate={todayIso()} maxDate={lastBookableDate(todayIso())} onChange={setBlockDate} />
         </div>
         <p className="mb-3 max-w-md text-sm text-content/75">{t("admin.settings.manageTimeSlotsDesc")}</p>
         <div className="mb-4 flex max-w-xl flex-wrap gap-2">

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin
 from app.database import get_db
 from app.models import QueueEntry, QueueStatus, BlockedSlot, IncludedSlot
-from app.services.booking import day_slot_times
+from app.services.booking import BOOKING_HORIZON_DAYS, day_slot_times
 from app.services.booking import get_or_create_shop_status as _get_or_create_shop_status
 from app.schemas import (
     ShopStatusOut,
@@ -22,10 +22,6 @@ from app.schemas import (
 )
 from app.timezone import today
 
-# Staff can prepare the calendar this far ahead. Later dates are refused as typing
-# mistakes. Customers can book only BOOKING_HORIZON_DAYS ahead, which is a separate rule.
-SLOT_CHANGE_HORIZON_DAYS = 366
-
 # Times staff may add to one day beyond opening hours.
 MAX_INCLUDED_SLOTS_PER_DAY = 48
 
@@ -35,10 +31,12 @@ def _require_changeable_date(day: date) -> None:
     current = today()
     if day < current:
         raise HTTPException(status_code=400, detail="That date is in the past")
-    if (day - current).days > SLOT_CHANGE_HORIZON_DAYS:
+    # The same horizon as customer bookings. The staff page cannot show later days,
+    # and nothing can be booked on them, so there is nothing to block or add there.
+    if (day - current).days > BOOKING_HORIZON_DAYS:
         raise HTTPException(
             status_code=400,
-            detail=f"That date is more than {SLOT_CHANGE_HORIZON_DAYS} days ahead",
+            detail=f"That date is more than {BOOKING_HORIZON_DAYS} days ahead",
         )
 
 

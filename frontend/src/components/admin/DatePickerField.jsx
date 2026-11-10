@@ -10,7 +10,7 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function DatePickerField({ value, onChange, minDate, label }) {
+export default function DatePickerField({ value, onChange, minDate, maxDate, label }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
@@ -85,6 +85,7 @@ export default function DatePickerField({ value, onChange, minDate, label }) {
               <DateCalendar
                 value={value || todayIso()}
                 minDate={minDate}
+                maxDate={maxDate}
                 onChange={(iso) => {
                   onChange(iso);
                   setOpen(false);
