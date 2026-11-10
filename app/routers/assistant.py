@@ -9,12 +9,14 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import AfterValidator, BaseModel, Field, field_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, Field, field_validator
+from pydantic_core import PydanticCustomError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -68,8 +70,38 @@ def _reject_time_zone(value: dt.time) -> dt.time:
 
 LocalTime = Annotated[dt.time, AfterValidator(_reject_time_zone)]
 Name = CustomerName  # the same rule as the website: trimmed, 1 to 100 characters, one line
+
+# The dashboard's parameters are only String or Number, with no boolean and no required
+# flag, so these three arrive as text. Pydantic's own parsing is too generous for them.
+PHONE_NOT_TEXT = "phone_not_text"
+PHONE_MESSAGE = "That phone number does not look valid."
+CLEAR_YES = frozenset({"yes", "true", "ja", "oui", "si"})
+_ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def _phone_is_text(value):
+    """A number has already lost any leading + or 0, so it is never read as digits."""
+    if isinstance(value, (int, float)):
+        raise PydanticCustomError(PHONE_NOT_TEXT, "the phone number must be text")
+    return value
+
+
+def _date_is_text(value):
+    """Refuses what lax parsing would read as a Unix timestamp, even when sent as text."""
+    if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
+        raise ValueError("dates must be text in the form YYYY-MM-DD")
+    return value
+
+
+def _clear_yes(value) -> bool:
+    """Only an unmistakable yes is consent. Pydantic's bool would also accept "1", "on" and "y"."""
+    return value is True or (isinstance(value, str) and value.strip().lower() in CLEAR_YES)
+
+
 # Any text: `normalize_phone` alone decides what is a valid number, as it does on the website.
-Phone = str
+Phone = Annotated[str, BeforeValidator(_phone_is_text)]
+LocalDate = Annotated[dt.date, BeforeValidator(_date_is_text)]
+Consent = Annotated[bool, BeforeValidator(_clear_yes)]
 
 
 class _BlankOptionalsAreMissing(BaseModel):
@@ -82,7 +114,7 @@ class _BlankOptionalsAreMissing(BaseModel):
 
 
 class AvailabilityRequest(_BlankOptionalsAreMissing):
-    date: dt.date
+    date: LocalDate
     service_id: str
     from_time: LocalTime | None = Field(default=None, alias="from")
     to_time: LocalTime | None = Field(default=None, alias="to")
@@ -91,25 +123,25 @@ class AvailabilityRequest(_BlankOptionalsAreMissing):
 class CreateBookingRequest(_BlankOptionalsAreMissing):
     name: Name
     phone: Phone
-    date: dt.date
+    date: LocalDate
     time: LocalTime
     service_id: str
 
 
 class FindBookingRequest(_BlankOptionalsAreMissing):
     phone: Phone
-    date: dt.date | None = None
+    date: LocalDate | None = None
 
 
 class CancelBookingRequest(_BlankOptionalsAreMissing):
     phone: Phone
-    date: dt.date
+    date: LocalDate
     time: LocalTime
 
 
 class AcceptOfferRequest(_BlankOptionalsAreMissing):
     phone: Phone
-    date: dt.date
+    date: LocalDate
     time: LocalTime
 
 
@@ -117,10 +149,10 @@ class JoinWaitlistRequest(_BlankOptionalsAreMissing):
     name: Name
     phone: Phone
     service_id: str
-    date: dt.date
+    date: LocalDate
     from_time: LocalTime = Field(alias="from")
     to_time: LocalTime = Field(alias="to")
-    consent: bool | None = None
+    consent: Consent = False
 
     @field_validator("to_time")
     @classmethod
@@ -175,6 +207,8 @@ def install_error_handlers(app: FastAPI) -> None:
             refused = _refusal_without_key(request)
             if refused is not None:
                 return refused
+        if all(item["type"] == PHONE_NOT_TEXT for item in error.errors()):
+            return _failure(request, "invalid_phone", PHONE_MESSAGE)
         # Names the fields only. The caller's values must not be echoed or logged.
         fields = sorted(
             {part for item in error.errors() for part in item["loc"][1:] if isinstance(part, str)}
@@ -192,7 +226,7 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(InvalidPhone)
     async def _invalid_phone(request: Request, _error: InvalidPhone):
-        return _failure(request, "invalid_phone", "That phone number does not look valid.")
+        return _failure(request, "invalid_phone", PHONE_MESSAGE)
 
     @app.exception_handler(BookingNotFound)
     async def _not_found(request: Request, _error: BookingNotFound):

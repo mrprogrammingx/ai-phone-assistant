@@ -26,7 +26,7 @@ Cancelling
 - Confirm the phone number, date and time, then call cancel_booking. Say it is cancelled only after ok: true.
 
 Waitlist
-- Before join_waitlist, ask explicit permission to contact the caller about a freed time. Set consent to true only if they say yes.
+- Before join_waitlist, ask explicit permission to contact the caller about a freed time. Set consent to "yes" only if they say yes, and to "no" otherwise.
 - Say a waitlist place is not an appointment and a slot is not reserved.
 - Never promise a waitlist slot in advance. It is booked only after accept_waitlist_offer succeeds.
 
@@ -41,7 +41,7 @@ Hello, thanks for calling the barbershop. How can I help you today?
 
 ## The Add tool form
 
-The form has no header or key field, so tools authenticate with variant (b), [a token in the URL path](#b-long-random-token-in-the-url-path).
+The form has no header or key field, so tools authenticate with variant (b), [a token in the URL path](#b-long-random-token-in-the-url-path). The text to copy into each field, tool by tool, is in `docs/dashboard-entry.md`.
 
 | Dashboard field | What to enter |
 | --- | --- |
@@ -49,12 +49,14 @@ The form has no header or key field, so tools authenticate with variant (b), [a 
 | HTTP Method | `POST` |
 | When to Use (AI Instruction) | The `description` from the definition below |
 | Webhook URL | `https://YOUR-TUNNEL-ADDRESS/assistant/t/YOUR-PATH-TOKEN/` followed by the part of `path` after `/assistant/`, for example `.../assistant/t/YOUR-PATH-TOKEN/bookings/find` |
-| Parameters | The `parameters` from the definition below |
+| Parameters | The `parameters` from the definition below. The form offers only String or Number and has no required flag, so use String for every parameter |
 | Preload before agent starts speaking | Behaviour unverified. Decide after the first test call |
 | Don't wait for result | Behaviour unverified. Leave it off, because the assistant must speak each tool's result. Judgement, not tested |
 | Customize webhook payload fields | Behaviour unverified. Leave the default until the capture has been read |
 
-**The request envelope is still unknown.** A note on the form says each webhook carries an envelope with the transcript, phone numbers, the agent prompt and the extracted parameters. Its exact shape is unknown until a real request has been captured, see [Capture mode](#capture-mode-rehearsal-only). The tool routes still expect a flat JSON body containing only each tool's fields, so a real call may be answered with `invalid_input` until that is resolved. No adapter has been designed or built, because that needs the capture.
+**The request envelope is still unknown.** A note on the form says each webhook carries an envelope with the transcript, phone numbers, the agent prompt and the extracted parameters. Its exact shape is unknown until a real request has been captured, see [Capture mode](#capture-mode-rehearsal-only). The tool routes still expect a flat JSON body containing only each tool's fields, so a real call may be answered with `invalid_input` until that is resolved. No adapter has been built, because that needs the capture. The plan is in section 4 of `docs/PLAN.md`.
+
+A phone sent as a number is refused with `invalid_phone`, and a date must be text in the form `YYYY-MM-DD`, so choose String for both.
 
 ## Tool definitions
 
@@ -199,7 +201,7 @@ Failure codes: `not_found`, `invalid_phone`.
       "date": { "type": "string", "description": "Date as YYYY-MM-DD, shop-local." },
       "from": { "type": "string", "description": "Earliest acceptable start time as HH:MM." },
       "to": { "type": "string", "description": "Latest acceptable start time as HH:MM." },
-      "consent": { "type": "boolean", "description": "True only if the caller agreed to be contacted about a freed time." }
+      "consent": { "type": "string", "description": "Write exactly yes only if the caller agreed to be contacted about a freed time. Otherwise write no." }
     },
     "required": ["name", "phone", "service_id", "date", "from", "to", "consent"]
   }
@@ -208,7 +210,7 @@ Failure codes: `not_found`, `invalid_phone`.
 
 Failure codes: `consent_required`, `date_past`, `date_too_far`, `invalid_phone`, `unknown_service`.
 
-`consent` is optional to the server, but leaving it out returns `consent_required`, so it is required here.
+`consent` is optional to the server, but leaving it out returns `consent_required`, so it is required here. Only a clear yes counts: `yes`, `true`, `ja`, `oui` or `si`, ignoring case and surrounding spaces. Everything else, including `no`, `1` and `on`, returns `consent_required`.
 
 ### accept_waitlist_offer
 
