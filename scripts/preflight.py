@@ -252,6 +252,16 @@ def check_webhook_secret(report: Report, fallback: bool) -> None:
         report.failure(name, "not set", f"Set {name} to the signing secret. {GENERATE}")
 
 
+def check_calendar_token(report: Report) -> None:
+    """The feed is an optional extra, so a missing token never fails the run."""
+    name = "CALENDAR_FEED_TOKEN"
+    value = os.environ.get(name, "")
+    if len(value) >= MINIMUM_SECRET_LENGTH:
+        report.passed(name, f"set, {len(value)} chars")
+    else:
+        report.skipped(name, f"optional; the calendar feed stays off without {MINIMUM_SECRET_LENGTH} or more chars")
+
+
 def check_application(report: Report, label: str, base_url: str, key: str, start_fix: str) -> float | None:
     """Checks one running assistant app. Returns the info round trip in milliseconds if it worked."""
     status, _, _ = _request(base_url, "POST", "/assistant/info", WRONG_KEY)
@@ -350,6 +360,7 @@ def main(arguments: list[str] | None = None) -> int:
     check_database(report)
     check_email(report, options.allow_real_email)
     check_webhook_secret(report, options.fallback)
+    check_calendar_token(report)
     check_application(
         report,
         "Local app",

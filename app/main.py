@@ -103,6 +103,9 @@ if FRONTEND_DIST.is_dir():
 
     @app.get("/{full_path:path}")
     def serve_frontend(full_path: str):
+        # The calendar feed is served only by app.calendar_main.
+        if full_path.startswith("calendar/"):
+            raise HTTPException(status_code=404, detail="Not Found")
         candidate = FRONTEND_DIST / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)

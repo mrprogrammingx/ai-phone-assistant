@@ -183,6 +183,47 @@ venv/bin/python scripts/public_rehearsal.py race http://127.0.0.1:8002 http://12
 
 Stop the tunnel with Ctrl+C as soon as you finish.
 
+## Calendar feed (optional, read-only)
+
+Staff can see appointments in a calendar app through an `.ics` subscription. It books
+nothing and changes nothing, and the booking app stays the only source of truth. A
+cancelled appointment disappears on the next fetch.
+
+Set `CALENDAR_FEED_TOKEN` to at least 24 random characters, then start the feed on its
+own port. Every request gets 404 until the token is set.
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+```bash
+venv/bin/uvicorn app.calendar_main:app --host 127.0.0.1 --port 8004
+```
+
+The feed address is `http://127.0.0.1:8004/calendar/YOUR-TOKEN.ics`. It covers
+appointments from yesterday through the next 60 days, up to 500 events.
+
+**Apple Calendar, on the same Mac.** File, New Calendar Subscription, then paste the
+address above.
+
+**Google Calendar.** Other calendars, From URL. Google fetches the address from its own
+servers, so it cannot reach `127.0.0.1`. It needs a public address for this one port,
+through a separate tunnel of its own (`cloudflared tunnel --url http://localhost:8004`).
+That is your choice to make: the feed is local by default, and the tunnel for the
+assistant on port 8003 must not be reused for it. Google refreshes subscribed feeds only
+every few hours, so changes appear late there.
+
+**Privacy rule.** The address may be shared by accident, so the feed carries only the
+service name and the times. It never contains a customer name, phone number, note or
+email. The token is the only protection, and anyone holding the address can read the
+schedule. A tunnel provider and a calendar service both see the full address. To revoke
+access, change the token, restart the feed and subscribe again.
+
+The feed is never mounted on the website app (8002) or the assistant app (8003). Its
+entry point turns off Uvicorn's access log, because that log prints the request path and
+the path holds the token. Its own log line records a redacted path, the status and the
+duration. Keep this entry point if you start it another way, or pass `--no-access-log`.
+
 ## Switching to Postgres
 
 Set `DATABASE_URL` in `.env`, e.g.:

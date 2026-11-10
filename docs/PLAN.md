@@ -142,6 +142,17 @@ Choose option 1: narrow `/assistant/*` endpoints inside this repository. Option 
 - The startup check also covers `call_requests` when that table exists. The table gained `suggested_times` and `suggested_as_of` after it was first added, so an older copy needs the `ALTER TABLE` commands printed at startup and listed in the README. A database without the table needs nothing. The Postgres commands are untested.
 - On Postgres, appointment status is a native enum: `ALTER TYPE queuestatus ADD VALUE IF NOT EXISTS 'cancelled';` (README). Not tested on Postgres.
 
+### Optional extra: read-only calendar feed
+
+Not part of the Suisse Line path, and nothing in the phone flow depends on it. `app.calendar_main` runs on `127.0.0.1:8004` and mounts one route, `GET /calendar/<token>.ics`. It is never mounted on the website app (8002) or the public assistant app (8003).
+
+- The token comes from `CALENDAR_FEED_TOKEN`, is compared in constant time and fails closed: unset, shorter than 24 characters or wrong all give 404.
+- It covers slot-occupying appointments from yesterday through the next 60 days, capped at 500 events. Times are UTC, converted with `APP_TIMEZONE`.
+- Privacy: the service name and times only. The query selects no customer column and no note.
+- It only reads. It is an export, not a two-way sync, and it calls no external calendar service.
+- The access log is off for this app and its own log redacts the path, so the token is never logged.
+- A calendar service on the internet can subscribe only if this one port is tunnelled separately, which is the user's choice.
+
 ## 5. Architecture and data flows
 
 One app, two entry points, one database and one booking function. The website and the phone assistant both go through it.
@@ -232,7 +243,8 @@ How the agent works in every phase: inspect, propose, you review, implement one 
 | 3. Smart Cancellation Waitlist | 6 | **Built, committed `48d0b1b`.** Actual hours not recorded. |
 | 4. Public endpoint rehearsal (port 8003, tunnel, remote probes, latency, two-process race) | 1.5 | **Passed through a real tunnel, committed `6af4bf3`.** Median 173 to 226 ms per call, worst 1.2 s, measured from the Mac running the app. A tunnel took over a minute to start answering. |
 | 4b. Webhook fallback (used only if live tools are unavailable) | Not planned | **Built, committed `212a98f`.** Untested against Suisse Line. |
-| 4c. Activation-day package: `scripts/preflight.py` and `docs/demo-runbook.md` | Not planned | **Built, not yet committed.** Local checks pass against a running app. The `--public-url` success path has not been run through a real tunnel, and nothing has been tested on a real call. |
+| 4c. Activation-day package: `scripts/preflight.py` and `docs/demo-runbook.md` | Not planned | **Built and committed.** Local checks pass against a running app. The `--public-url` success path has not been run through a real tunnel, and nothing has been tested on a real call. |
+| 4d. Read-only calendar feed (optional extra, not part of the Suisse Line path) | Not planned | **Built and committed.** 56 automated tests. No real Google or Apple subscription tested. |
 | 5. Activate the trial and adapt | 2.5 | After section 10 |
 | 6. Configure the assistant, first calls (about 12 min) | 3 | |
 | 7. Failure drills and rehearsal (about 22 min) | 3 | |
@@ -258,7 +270,7 @@ Planned total about 35 to 37 h, of which phases 1, 2, 2b and 3 are done. Estimat
 
 Booking logic is proved by automated tests. Real calls prove only speech, tool wiring and assistant behaviour. Budgeted call time is 34 minutes, leaving 26 of the 60.
 
-**Automated (no trial minutes).** Temporary database and injected clock, never the Mac's zone. Current baseline: 604 passing (150 at Phase 2, 205 with Phase 2b, 229 before Phase 3, 349 with Phase 3, 482 with the webhook fallback, 516 with its retention and suggested times). Cases: invalid or past dates, unknown service, off-grid times, past time today, closed day and blocked slot, conflicts, duplicate and retried bookings, 12-way concurrency across repeated rounds, phone format variants, book-cancel-rebook, auth missing/wrong/unset, admin paths 404 on the assistant app, near-midnight dates (23:30 and 00:30 Zurich), DST (2027-03-28 and 2027-10-31), failing email provider, **interval overlaps, capacity with overlaps, blocked slots inside an interval, closing time, missing-columns startup refusal for `queue_entries` and `call_requests`, changes to cancelled appointments, no-show revival, webhook signature and fail-closed secret, body limit, each follow-up reason, duplicate deliveries sequential and concurrent, no personal data in webhook logs, retention by closing date with an injected clock, suggested times that fit the service, fall through to the next open date, skip past times and never change a booking**, waitlist consent, matching, concurrent acceptance, expiry, retention, and no personal data in logs.
+**Automated (no trial minutes).** Temporary database and injected clock, never the Mac's zone. Current baseline: 660 passing (604 before the calendar feed, 150 at Phase 2, 205 with Phase 2b, 229 before Phase 3, 349 with Phase 3, 482 with the webhook fallback, 516 with its retention and suggested times). Cases: invalid or past dates, unknown service, off-grid times, past time today, closed day and blocked slot, conflicts, duplicate and retried bookings, 12-way concurrency across repeated rounds, phone format variants, book-cancel-rebook, auth missing/wrong/unset, admin paths 404 on the assistant app, near-midnight dates (23:30 and 00:30 Zurich), DST (2027-03-28 and 2027-10-31), failing email provider, **interval overlaps, capacity with overlaps, blocked slots inside an interval, closing time, missing-columns startup refusal for `queue_entries` and `call_requests`, changes to cancelled appointments, no-show revival, webhook signature and fail-closed secret, body limit, each follow-up reason, duplicate deliveries sequential and concurrent, no personal data in webhook logs, retention by closing date with an injected clock, suggested times that fit the service, fall through to the next open date, skip past times and never change a booking**, waitlist consent, matching, concurrent acceptance, expiry, retention, and no personal data in logs.
 
 **Real calls (fictional customers only).**
 
@@ -275,6 +287,7 @@ Booking logic is proved by automated tests. Real calls prove only speech, tool w
 | R9 | Join waitlist with consent | Entry stored, assistant says it is not an appointment | 3 |
 | R10 | Manual release, call back to accept | Booked only after the API succeeds | 2.5 |
 | R11 | Dress rehearsal | Completes without intervention | 4.5 |
+| C1 | Optional extra: calendar feed (`tests/test_calendar_feed.py`, 56 automated tests) | Passes without a call. Uses no trial minutes. | 0 |
 | | Reserve for prompt fixes | | 4 |
 | | **Total** | | **34** |
 
@@ -314,7 +327,7 @@ The critical path has one external dependency: live tools usable in the trial. E
 | **P0** | Support questions sent. **Done:** test isolation, `APP_TIMEZONE`, lock, past and closed slots, `cancelled`, API key, phone normalisation, shared services file, five tools, assistant-only entry point. **Built and committed:** interval booking (2b, `faf771f`), cancelled-entry block (item 14, `194e0e4`), no-show revival check (item 18, `1067b09`). **Built and committed (Phase 3, `48d0b1b`):** waitlist with consent and safe acceptance, two waitlist tools. **To do:** tunnel probes, assistant configuration, calls R1 to R11 |
 | P1 | `reschedule_booking`. Automatic waitlist matching on cancel. Require a matching caller number if tools receive it. Backup demo video. Commit and verify the webhook fallback (becomes P0 if the gate fails) |
 | P2 | Waitlist offers in the staff dashboard. Named tunnel. Flexible start times so a 45-minute booking does not waste 15 minutes. Second demo language. Show the refusal message on the history page |
-| Out of scope | DataLayer. Voice Cloner. Multi-tenancy. Per-barber schedules. Provider abstractions, microservices, outboxes. CRM, analytics, billing. Native calendar sync. Automated customer notifications. **Languages other than English.** |
+| Out of scope | DataLayer. Voice Cloner. Multi-tenancy. Per-barber schedules. Provider abstractions, microservices, outboxes. CRM, analytics, billing. Two-way calendar sync (the read-only `.ics` export in section 4 is one-way and books nothing, so it is not a sync). Automated customer notifications. **Languages other than English.** |
 
 **Readiness checklist before activating the trial**
 
